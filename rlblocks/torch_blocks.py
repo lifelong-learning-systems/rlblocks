@@ -52,7 +52,7 @@ class QLoss(Callable[[TorchBatch], torch.Tensor]):
         self.q_fn = q_fn
         self.old_q_fn = old_q_fn
         self.discount = discount
-        self.criterion = criterion()
+        self.criterion = criterion
 
     def _get_max_next_q(self, batch: TorchBatch) -> torch.Tensor:
         return self.old_q_fn(batch.next_state).max(-1)[0].unsqueeze(1)
@@ -142,7 +142,7 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
         super().__init__()
         self.state_value_fn = state_value_fn
         self.old_state_value_fn = old_state_value_fn
-        self.criterion = criterion()
+        self.criterion = criterion
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
