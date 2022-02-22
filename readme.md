@@ -10,4 +10,6 @@
 # Framing
 
 1. An RL Algorithm is a collection of things that happens at certain times
+   1. The unit of time for RL algorithms is usually either Steps taken in the environment, or episodes completed
+2. 
 

@@ -70,10 +70,9 @@ Duration = Timer
 Every = Timer
 
 
-class StdoutReport(StepObserver):
-    def __init__(self, frequency: Timer) -> None:
+class RewardTracker(StepObserver):
+    def __init__(self) -> None:
         super().__init__()
-        self.print_timer = frequency
         self.total_reward = 0.0
         self.total_steps = 0
         self.total_episodes = 0
@@ -83,10 +82,6 @@ class StdoutReport(StepObserver):
             self.total_reward += t.reward
             self.total_steps += 1
             self.total_episodes += int(t.done)
-        self.print_timer.receive_steps(steps)
-        if self.print_timer.is_finished():
-            self.print_timer.restart()
-            print(self)
 
     def __str__(self) -> str:
         return str(

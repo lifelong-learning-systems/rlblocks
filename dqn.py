@@ -37,16 +37,19 @@ epsilon_greedy = ChooseBetween(
     rng=rng,
 )
 
+stats = RewardTracker()
+
 callbacks = PeriodicCallbacks(
     {
         Every(100, Steps): HardParameterUpdate(model, old_model),
         Every(1, Steps, offset=1000): update_model_fn,
+        Every(20, Steps): lambda: print(stats),
     },
 )
 
 run_env_interaction(
     env_fn=lambda: gym.make("CartPole-v1"),
     choose_action_fn=epsilon_greedy,
-    step_observers=[buffer, callbacks, StdoutReport(Every(20, Steps))],
+    step_observers=[buffer, callbacks, stats],
     duration=Duration(20_000, Steps),
 )

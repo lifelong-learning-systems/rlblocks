@@ -79,20 +79,23 @@ def update_model_fn():
             optimizer.step()
 
 
+stats = RewardTracker()
+
 callbacks = PeriodicCallbacks(
     {
+        Every(20, Steps): lambda: print(stats),
         Every(512, Steps): CallFunctions(
             buffer.complete_partial_trajectories,
             update_model_fn,
             update_old_model_fn,
             buffer.clear,
-        )
+        ),
     },
 )
 
 run_env_interaction(
     env_fn=lambda: gym.make("Pendulum-v1"),
     choose_action_fn=NumpyToTorchConverter(SampleAction(model.action_dist)),
-    step_observers=[buffer, callbacks, StdoutReport(Every(20, Steps))],
+    step_observers=[buffer, callbacks, stats],
     duration=Duration(20_000, Steps),
 )

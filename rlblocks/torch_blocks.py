@@ -192,10 +192,11 @@ class NumpyToTorchConverter(Callable[[np.ndarray], np.ndarray]):
         self.torch_fn = torch_fn
 
     def __call__(self, x_numpy: np.ndarray) -> np.ndarray:
-        x_torch = torch.from_numpy(x_numpy).float()
-        y_torch = self.torch_fn(x_torch)
-        y_numpy = y_torch.numpy()
-        return y_numpy
+        with torch.no_grad():
+            x_torch = torch.from_numpy(x_numpy).float()
+            y_torch = self.torch_fn(x_torch)
+            y_numpy = y_torch.numpy()
+            return y_numpy
 
 
 class ArgmaxAction(Callable[[Observation], Action]):
