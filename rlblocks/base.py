@@ -102,7 +102,7 @@ class StdoutReport(StepObserver):
         )
 
 
-class RunFunctions(Callable[[], None]):
+class CallFunctions(Callable[[], None]):
     def __init__(self, *fns: Callable[[], None]) -> None:
         super().__init__()
         self.fns = fns

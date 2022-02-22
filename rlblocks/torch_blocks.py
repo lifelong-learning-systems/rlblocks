@@ -187,20 +187,19 @@ class SampleAction(Callable[[Observation], Action]):
         return self.distribution_fn(observation).sample()
 
 
-class Numpy(Callable[[Observation], np.ndarray]):
-    # TODO: confusing how this is called on inputs & outputs
-    def __init__(self, action_fn: Callable[[Observation], torch.Tensor]) -> None:
-        super().__init__()
-        self.action_fn = action_fn
+class NumpyToTorchConverter(Callable[[np.ndarray], np.ndarray]):
+    def __init__(self, torch_fn: Callable[[torch.Tensor], torch.Tensor]) -> None:
+        self.torch_fn = torch_fn
 
-    @torch.no_grad()
-    def __call__(self, observation: Observation) -> np.ndarray:
-        return self.action_fn(torch.from_numpy(observation).float()).numpy()
+    def __call__(self, x_numpy: np.ndarray) -> np.ndarray:
+        x_torch = torch.from_numpy(x_numpy).float()
+        y_torch = self.torch_fn(x_torch)
+        y_numpy = y_torch.numpy()
+        return y_numpy
 
 
 class ArgmaxAction(Callable[[Observation], Action]):
     def __init__(self, score_fn: Callable[[Observation], torch.Tensor]) -> None:
-        super().__init__()
         self.score_fn = score_fn
 
     def __call__(self, observation: Observation) -> Action:
@@ -230,7 +229,6 @@ class ChooseBetween(Callable[[Observation], Action]):
 
 class Interpolate(Callable[[], float]):
     def __init__(self, start: float, end: float, n: int) -> None:
-        super().__init__()
         self.start = start
         self.end = end
         self.n = n
@@ -285,7 +283,6 @@ class BatchIterator:
 
 class FIFOBuffer(StepObserver):
     def __init__(self, max_size: int) -> None:
-        super().__init__()
         self.max_size = max_size
         self.steps = []
 
@@ -306,11 +303,10 @@ class FIFOBuffer(StepObserver):
 class GeneralizedAdvantageEstimatingBuffer(StepObserver):
     def __init__(
         self,
-        value_fn: Callable[[Observation], np.ndarray],
+        value_fn: Callable[[np.ndarray], np.ndarray],
         gamma: float = 0.99,
         lam: float = 0.95,
     ) -> None:
-        super().__init__()
         self.value_fn = value_fn
         self.gamma = gamma
         self.lam = lam

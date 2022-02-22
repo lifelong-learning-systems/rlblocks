@@ -14,7 +14,7 @@ from rlblocks.base import (
     StdoutReport,
     PeriodicCallbacks,
     run_env_interaction,
-    RunFunctions,
+    CallFunctions,
 )
 from rlblocks.torch_blocks import (
     PolyakParameterUpdate,
@@ -34,7 +34,7 @@ from rlblocks.torch_blocks import (
     HardParameterUpdate,
     FIFOBuffer,
     batch_normalize_advantange,
-    Numpy,
+    NumpyToTorchConverter,
     SampleAction,
     BatchIterator,
     GeneralizedAdvantageEstimatingBuffer,

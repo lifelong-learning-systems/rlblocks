@@ -37,7 +37,9 @@ rng = np.random.default_rng(0)
 model = CategoricalPPOModel()
 old_model = deepcopy(model)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
-buffer = GeneralizedAdvantageEstimatingBuffer(value_fn=Numpy(model.state_value))
+buffer = GeneralizedAdvantageEstimatingBuffer(
+    value_fn=NumpyToTorchConverter(model.state_value)
+)
 
 policy_loss_fn = ClippedPolicyGradientLoss(model.action_dist, old_model.action_dist)
 value_loss_fn = TDAdvantageLoss(model.state_value, old_model.state_value)
@@ -58,7 +60,7 @@ def update_model_fn():
 
 callbacks = PeriodicCallbacks(
     {
-        Every(512, Steps): RunFunctions(
+        Every(512, Steps): CallFunctions(
             buffer.complete_partial_trajectories,
             update_model_fn,
             update_old_model_fn,
@@ -69,7 +71,7 @@ callbacks = PeriodicCallbacks(
 
 run_env_interaction(
     env_fn=lambda: gym.make("CartPole-v1"),
-    choose_action_fn=Numpy(SampleAction(model.action_dist)),
+    choose_action_fn=NumpyToTorchConverter(SampleAction(model.action_dist)),
     step_observers=[buffer, callbacks, StdoutReport(Every(20, Steps))],
     duration=Duration(20_000, Steps),
 )

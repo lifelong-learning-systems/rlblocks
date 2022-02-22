@@ -32,7 +32,7 @@ def update_model_fn():
 
 epsilon_greedy = ChooseBetween(
     lambda o: rng.choice(2, size=len(o)),
-    Numpy(ArgmaxAction(model)),
+    NumpyToTorchConverter(ArgmaxAction(model)),
     prob_fn=Interpolate(start=1.0, end=0.0, n=2000),
     rng=rng,
 )
