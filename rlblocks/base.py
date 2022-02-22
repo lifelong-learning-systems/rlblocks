@@ -9,7 +9,8 @@ Reward = float
 Done = bool
 
 
-class Transition(NamedTuple):
+class Step(NamedTuple):  # or StepData, or Step
+    # TODO: is this abstraction even necessary?
     state: Observation
     action: Action
     reward: float
@@ -17,9 +18,9 @@ class Transition(NamedTuple):
     next_state: Observation
 
 
-class TransitionObserver(abc.ABC):
+class StepObserver(abc.ABC):
     @abc.abstractmethod
-    def receive_transitions(self, transitions: Sequence[Transition]) -> None:
+    def receive_steps(self, steps: Iterable[Step]) -> None:
         pass
 
 
@@ -32,16 +33,16 @@ Steps = RLTimeUnit.STEPS
 Episodes = RLTimeUnit.EPISODES
 
 
-class Timer(TransitionObserver):
-    def __init__(self, n: int, unit: RLTimeUnit, *, delay: int = 0) -> None:
+class Timer(StepObserver):
+    def __init__(self, n: int, unit: RLTimeUnit, *, offset: int = 0) -> None:
         self.n = n
         self.unit = unit
         self.num_steps_taken = 0
         self.num_episodes_completed = 0
-        self.delay = delay
+        self.delay = offset
 
-    def receive_transitions(self, transitions: Sequence[Transition]) -> None:
-        for _obs, _action, _reward, done, _next_obs in transitions:
+    def receive_steps(self, steps: Iterable[Step]) -> None:
+        for _obs, _action, _reward, done, _next_obs in steps:
             self.num_steps_taken += 1
             self.num_episodes_completed += int(done)
 
@@ -69,23 +70,23 @@ Duration = Timer
 Every = Timer
 
 
-class Report(TransitionObserver):
-    def __init__(self) -> None:
+class StdoutReport(StepObserver):
+    def __init__(self, frequency: Timer) -> None:
         super().__init__()
+        self.print_timer = frequency
         self.total_reward = 0.0
-        self.total_transitions = 0
+        self.total_steps = 0
         self.total_episodes = 0
 
-    def clear(self):
-        self.total_reward = 0.0
-        self.total_transitions = 0
-        self.total_episodes = 0
-
-    def receive_transitions(self, transitions: Sequence[Transition]) -> None:
-        for t in transitions:
+    def receive_steps(self, steps: Iterable[Step]) -> None:
+        for t in steps:
             self.total_reward += t.reward
-            self.total_transitions += 1
+            self.total_steps += 1
             self.total_episodes += int(t.done)
+        self.print_timer.receive_steps(steps)
+        if self.print_timer.is_finished():
+            self.print_timer.restart()
+            print(self)
 
     def __str__(self) -> str:
         return str(
@@ -95,49 +96,42 @@ class Report(TransitionObserver):
                 else self.total_reward / self.total_episodes,
                 "mean_episode_length": 0
                 if self.total_episodes == 0
-                else self.total_transitions / self.total_episodes,
+                else self.total_steps / self.total_episodes,
                 "num_episodes": self.total_episodes,
             }
         )
 
 
-class PeriodicCallbacks(TransitionObserver):
+class PeriodicCallbacks(StepObserver):
     def __init__(
         self, callbacks_by_timer: Dict[Timer, List[Callable[[], None]]]
     ) -> None:
         super().__init__()
         self.callbacks_by_timer = callbacks_by_timer
 
-    def receive_transitions(self, transitions: Sequence[Transition]) -> None:
+    def receive_steps(self, steps: Iterable[Step]) -> None:
         for timer, callbacks in self.callbacks_by_timer.items():
-            timer.receive_transitions(transitions)
+            timer.receive_steps(steps)
             if timer.is_finished():
                 for cb in callbacks:
                     cb()
                 timer.restart()
 
 
-def mdp_report_generator(
+def run_env_interaction(
     *,
     env_fn: Callable[[], gym.Env],
     num_envs: int = 1,
     choose_action_fn: Callable[[Sequence[Observation]], Action],
-    transition_observers: List[TransitionObserver],
+    step_observers: List[StepObserver],
     duration: Duration,
-    report: Optional[Report] = None,
-) -> Generator[Report, None, None]:
+) -> None:
     vec_env: gym.vector.VectorEnv = gym.vector.SyncVectorEnv(
         [env_fn for _ in range(num_envs)]
     )
 
-    if report is None:
-        report = Report()
-
-    if report not in transition_observers:
-        transition_observers.append(report)
-
-    if duration not in transition_observers:
-        transition_observers.append(duration)
+    if duration not in step_observers:
+        step_observers.append(duration)
 
     obss = vec_env.reset()
     while not duration.is_finished():
@@ -147,11 +141,9 @@ def mdp_report_generator(
             n if not d else i["terminal_observation"]
             for n, d, i in zip(new_obss, dones, infos)
         ]
-        transitions = [
-            Transition(*values)
-            for values in zip(obss, actions, rewards, dones, next_obss)
+        steps = [
+            Step(*values) for values in zip(obss, actions, rewards, dones, next_obss)
         ]
-        for observer in transition_observers:
-            observer.receive_transitions(transitions)
+        for observer in step_observers:
+            observer.receive_steps(steps)
         obss = new_obss
-        yield report

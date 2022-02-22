@@ -4,6 +4,7 @@ from rlblocks import *
 from torch import nn, optim
 import numpy as np
 
+rng = np.random.default_rng(0)
 
 model = nn.Sequential(
     nn.Linear(4, 64),
@@ -14,19 +15,19 @@ model = nn.Sequential(
 )
 old_model = deepcopy(model)
 optimizer = optim.SGD(model.parameters(), lr=1e-2)
-rng = np.random.default_rng(0)
 buffer = FIFOBuffer(max_size=50_000)
 
-dqn_loss = QLoss(model, old_model)
-opt_step = OptimizerStep(optimizer)
+dqn_loss_fn = QLoss(model, old_model)
 
 
-def update_model():
+def update_model_fn():
     for _ in range(4):
         inds = rng.choice(len(buffer), size=128)
         batch = buffer.get_batch(inds)
-        loss = dqn_loss(batch)
-        opt_step(loss)
+        loss = dqn_loss_fn(batch)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
 
 epsilon_greedy = ChooseBetween(
@@ -38,16 +39,14 @@ epsilon_greedy = ChooseBetween(
 
 callbacks = PeriodicCallbacks(
     {
-        Every(1, Steps, delay=1000): [update_model],
         Every(100, Steps): [HardParameterUpdate(model, old_model)],
+        Every(1, Steps, offset=1000): [update_model_fn],
     },
 )
 
-training_report_generator = mdp_report_generator(
+run_env_interaction(
     env_fn=lambda: gym.make("CartPole-v1"),
     choose_action_fn=epsilon_greedy,
-    transition_observers=[buffer, callbacks],
+    step_observers=[buffer, callbacks, StdoutReport(Every(20, Steps))],
     duration=Duration(20_000, Steps),
 )
-for report in training_report_generator:
-    print(report)

@@ -7,8 +7,8 @@ import scipy.signal
 from .base import (
     Action,
     Observation,
-    Transition,
-    TransitionObserver,
+    Step,
+    StepObserver,
 )
 
 
@@ -92,7 +92,7 @@ class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
         return ((0.0 - log_prob_a) * batch.advantage).mean()
 
 
-class ClippedSurrogatePolicyGradientLoss:
+class ClippedPolicyGradientLoss:
     # PPO https://github.com/deepmind/rlax/blob/66ea2d68a083933a3fb3f76a4e0935339005e1aa/rlax/_src/policy_gradients.py#L258
     def __init__(
         self,
@@ -191,6 +191,7 @@ class SampleAction(Callable[[Observation], Action]):
 
 
 class Numpy(Callable[[Observation], np.ndarray]):
+    # NOTE: confusing how this is called on inputs & outputs
     def __init__(self, action_fn: Callable[[Observation], torch.Tensor]) -> None:
         super().__init__()
         self.action_fn = action_fn
@@ -246,17 +247,6 @@ class Interpolate(Callable[[], float]):
         return self.start * (1.0 - t) + self.end * t
 
 
-class OptimizerStep(Callable[[torch.Tensor], None]):
-    # TODO: add gradient clipping?
-    def __init__(self, optimizer: torch.optim.Optimizer) -> None:
-        self.optimizer = optimizer
-
-    def __call__(self, loss: torch.Tensor) -> None:
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-
 class SoftParameterUpdate(Callable[[], None]):
     def __init__(
         self, model: torch.nn.Module, target: torch.nn.Module, tau: float
@@ -294,27 +284,27 @@ class BatchIterator:
             i += self.batch_size
 
 
-class FIFOBuffer(TransitionObserver):
+class FIFOBuffer(StepObserver):
     def __init__(self, max_size: int) -> None:
         super().__init__()
         self.max_size = max_size
-        self.transitions = []
+        self.steps = []
 
     def __len__(self):
-        return len(self.transitions)
+        return len(self.steps)
 
-    def receive_transitions(self, transitions: Sequence[Transition]) -> None:
-        self.transitions.extend(transitions)
-        while len(self.transitions) > self.max_size:
-            self.transitions.pop(0)
-        assert len(self.transitions) <= self.max_size
+    def receive_steps(self, steps: Sequence[Step]) -> None:
+        self.steps.extend(steps)
+        while len(self.steps) > self.max_size:
+            self.steps.pop(0)
+        assert len(self.steps) <= self.max_size
 
     def get_batch(self, indices: List[int]) -> TorchBatch:
-        ts = [self.transitions[i] for i in indices]
+        ts = [self.steps[i] for i in indices]
         return TorchBatch(*list(zip(*ts)), None).torch()
 
 
-class GeneralizedAdvantageEstimatingBuffer(TransitionObserver):
+class GeneralizedAdvantageEstimatingBuffer(StepObserver):
     def __init__(
         self,
         value_fn: Callable[[Observation], np.ndarray],
@@ -328,16 +318,16 @@ class GeneralizedAdvantageEstimatingBuffer(TransitionObserver):
         self.episodes = []
         self.episode_values = []
         self.episode_rewards = []
-        self.transitions = []
+        self.steps = []
 
-    def receive_transitions(self, transitions: Sequence[Transition]) -> None:
+    def receive_steps(self, steps: Sequence[Step]) -> None:
         if len(self.episodes) == 0:
-            for _ in range(len(transitions)):
+            for _ in range(len(steps)):
                 self.episodes.append([])
                 self.episode_values.append([])
                 self.episode_rewards.append([])
-        assert len(self.episodes) == len(transitions)
-        for i_ep, t in enumerate(transitions):
+        assert len(self.episodes) == len(steps)
+        for i_ep, t in enumerate(steps):
             self.episodes[i_ep].append(t)
             self.episode_rewards[i_ep].append(t.reward)
             self.episode_values[i_ep].append(self.value_fn(t.state))
@@ -360,37 +350,40 @@ class GeneralizedAdvantageEstimatingBuffer(TransitionObserver):
 
         assert len(advantages) == len(self.episodes[i_ep])
         for i_step, t in enumerate(self.episodes[i_ep]):
-            self.transitions.append((*t, advantages[i_step]))
+            self.steps.append([*t, advantages[i_step]])
 
         self.episodes[i_ep].clear()
         self.episode_rewards[i_ep].clear()
         self.episode_values[i_ep].clear()
 
     def __len__(self) -> int:
-        return len(self.transitions)
+        return len(self.steps)
 
     def clear(self):
         self.episodes = []
         self.episode_values = []
         self.episode_rewards = []
-        self.transitions = []
+        self.steps = []
 
     def complete_partial_trajectories(self):
         for i_ep, partial_trajectory in enumerate(self.episodes):
             if len(partial_trajectory) > 0:
-                final_transition = partial_trajectory[-1]
+                final_step = partial_trajectory[-1]
                 self._consume_episode(
                     i_ep,
-                    final_value=self.value_fn(final_transition.next_state),
+                    final_value=self.value_fn(final_step.next_state),
                 )
 
     def get_batch(self, indices: List[int]) -> TorchBatch:
-        ts = [self.transitions[i] for i in indices]
+        ts = [self.steps[i] for i in indices]
         return TorchBatch(*list(zip(*ts))).torch()
 
 
 def buffer_normalize_advantage(buffer: GeneralizedAdvantageEstimatingBuffer):
-    ...
+    advantages = torch.tensor([t[-1] for t in buffer.steps])
+    adv = (advantages - advantages.mean()) / (1e-6 + advantages.std())
+    for i, a in enumerate(adv):
+        buffer.steps[i][-1] = a
 
 
 def batch_normalize_advantange(batch: TorchBatch) -> TorchBatch:

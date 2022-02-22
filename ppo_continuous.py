@@ -1,24 +1,34 @@
 from copy import deepcopy
 import gym
+from typing import *
 from rlblocks import *
 import torch
 from torch import nn, optim
-from torch.distributions import Distribution, Categorical
+import torch.nn.functional as F
+from torch.distributions import (
+    Distribution,
+    Independent,
+    Normal,
+    TransformedDistribution,
+    TanhTransform,
+    AffineTransform,
+    ComposeTransform,
+)
 import numpy as np
 
 
-class CategoricalPPOModel(nn.Module):
+class DiagGaussianPPOModel(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.pi = nn.Sequential(
-            nn.Linear(4, 64),
+        self.diag_gaussian = nn.Sequential(
+            nn.Linear(3, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, 2),
         )
         self.v = nn.Sequential(
-            nn.Linear(4, 64),
+            nn.Linear(3, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
@@ -26,15 +36,26 @@ class CategoricalPPOModel(nn.Module):
         )
 
     def action_dist(self, obs: Observation) -> Distribution:
-        return Categorical(logits=self.pi(obs))
+        mean, log_std = self.diag_gaussian(obs).chunk(2, dim=-1)
+        dist = Normal(mean, F.softplus(log_std))
+        # dist = Independent(dist, 1)
+        dist = TransformedDistribution(
+            dist,
+            ComposeTransform(
+                [TanhTransform(cache_size=1), AffineTransform(0.0, 2.0, cache_size=1)],
+                cache_size=1,
+            ),
+        )
+        return dist
 
     def state_value(self, obs: Observation):
         return self.v(obs)
 
 
+torch.manual_seed(0)
 rng = np.random.default_rng(0)
 
-model = CategoricalPPOModel()
+model = DiagGaussianPPOModel()
 old_model = deepcopy(model)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 buffer = GeneralizedAdvantageEstimatingBuffer(value_fn=Numpy(model.state_value))
@@ -63,12 +84,12 @@ callbacks = PeriodicCallbacks(
             update_model_fn,
             update_old_model_fn,
             buffer.clear,
-        ]
+        ],
     },
 )
 
 run_env_interaction(
-    env_fn=lambda: gym.make("CartPole-v1"),
+    env_fn=lambda: gym.make("Pendulum-v1"),
     choose_action_fn=Numpy(SampleAction(model.action_dist)),
     step_observers=[buffer, callbacks, StdoutReport(Every(20, Steps))],
     duration=Duration(20_000, Steps),
