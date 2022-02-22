@@ -72,22 +72,22 @@ class DoubleQLoss(QLoss):
 
 
 class EntropyLoss(Callable[[TorchBatch], torch.Tensor]):
-    def __init__(self, dist_fn: Callable[[Observation], Distribution]) -> None:
-        self.dist_fn = dist_fn
+    def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
+        self.distribution_fn = distribution_fn
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
-        # TODO this potentially invokes dist_fn twice, is that different from reusing?
-        dist = self.dist_fn(batch.state)
+        # TODO this potentially invokes distribution_fn twice, is that different from reusing?
+        dist = self.distribution_fn(batch.state)
         return -dist.entropy().mean()
 
 
 class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
     # loss used in A2C https://github.com/deepmind/rlax/blob/66ea2d68a083933a3fb3f76a4e0935339005e1aa/rlax/_src/policy_gradients.py#L89
-    def __init__(self, dist_fn: Callable[[Observation], Distribution]) -> None:
-        self.dist_fn = dist_fn
+    def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
+        self.distribution_fn = distribution_fn
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
-        dist = self.dist_fn(batch.state)
+        dist = self.distribution_fn(batch.state)
         log_prob_a = dist.log_prob(batch.action)
         return ((0.0 - log_prob_a) * batch.advantage).mean()
 
@@ -96,18 +96,20 @@ class ClippedPolicyGradientLoss:
     # PPO https://github.com/deepmind/rlax/blob/66ea2d68a083933a3fb3f76a4e0935339005e1aa/rlax/_src/policy_gradients.py#L258
     def __init__(
         self,
-        dist_fn: Callable[[Observation], Distribution],
-        old_dist_fn: Callable[[Observation], Distribution],
+        distribution_fn: Callable[[Observation], Distribution],
+        old_distribution_fn: Callable[[Observation], Distribution],
         clip_range: float = 0.2,
     ) -> None:
-        self.dist_fn = dist_fn
-        self.old_dist_fn = old_dist_fn
+        self.distribution_fn = distribution_fn
+        self.old_distribution_fn = old_distribution_fn
         self.clip_range = clip_range
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
-            old_log_prob_a = self.old_dist_fn(batch.state).log_prob(batch.action)
-        log_prob_a = self.dist_fn(batch.state).log_prob(batch.action)
+            old_log_prob_a = self.old_distribution_fn(batch.state).log_prob(
+                batch.action
+            )
+        log_prob_a = self.distribution_fn(batch.state).log_prob(batch.action)
 
         ratio = torch.exp(log_prob_a - old_log_prob_a)
         clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range)
@@ -139,7 +141,6 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
         old_state_value_fn: Callable[[Observation], Value],
         criterion: nn.Module = nn.MSELoss(),
     ) -> None:
-        super().__init__()
         self.state_value_fn = state_value_fn
         self.old_state_value_fn = old_state_value_fn
         self.criterion = criterion
@@ -179,19 +180,15 @@ class TDActionValueLoss(Callable[[TorchBatch], torch.Tensor]):
 
 
 class SampleAction(Callable[[Observation], Action]):
-    def __init__(
-        self, dist_fn: Callable[[Observation], torch.distributions.Distribution]
-    ) -> None:
-        super().__init__()
-        self.dist_fn = dist_fn
+    def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
+        self.distribution_fn = distribution_fn
 
     def __call__(self, observation: Observation) -> Action:
-        dist = self.dist_fn(observation)
-        return dist.sample()
+        return self.distribution_fn(observation).sample()
 
 
 class Numpy(Callable[[Observation], np.ndarray]):
-    # NOTE: confusing how this is called on inputs & outputs
+    # TODO: confusing how this is called on inputs & outputs
     def __init__(self, action_fn: Callable[[Observation], torch.Tensor]) -> None:
         super().__init__()
         self.action_fn = action_fn
@@ -249,16 +246,18 @@ class Interpolate(Callable[[], float]):
 
 class SoftParameterUpdate(Callable[[], None]):
     def __init__(
-        self, model: torch.nn.Module, target: torch.nn.Module, tau: float
+        self, model: torch.nn.Module, old_model: torch.nn.Module, tau: float
     ) -> None:
         self.model = model
-        self.target = target
+        self.old_model = old_model
         self.tau = tau
 
-    @torch.no_grad()
     def __call__(self):
-        for p, target_p in zip(self.model.parameters(), self.target.parameters()):
-            target_p.data.copy_(self.tau * p.data + (1.0 - self.tau) * target_p.data)
+        with torch.no_grad():
+            for curr_p, old_p in zip(
+                self.model.parameters(), self.old_model.parameters()
+            ):
+                old_p.data.copy_(self.tau * curr_p.data + (1.0 - self.tau) * old_p.data)
 
 
 PolyakParameterUpdate = SoftParameterUpdate
