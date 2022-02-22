@@ -79,12 +79,12 @@ def update_model_fn():
 
 callbacks = PeriodicCallbacks(
     {
-        Every(512, Steps): [
+        Every(512, Steps): RunFunctions(
             buffer.complete_partial_trajectories,
             update_model_fn,
             update_old_model_fn,
             buffer.clear,
-        ],
+        )
     },
 )
 

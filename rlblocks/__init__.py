@@ -14,6 +14,7 @@ from rlblocks.base import (
     StdoutReport,
     PeriodicCallbacks,
     run_env_interaction,
+    RunFunctions,
 )
 from rlblocks.torch_blocks import (
     PolyakParameterUpdate,

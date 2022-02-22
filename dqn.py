@@ -39,8 +39,8 @@ epsilon_greedy = ChooseBetween(
 
 callbacks = PeriodicCallbacks(
     {
-        Every(100, Steps): [HardParameterUpdate(model, old_model)],
-        Every(1, Steps, offset=1000): [update_model_fn],
+        Every(100, Steps): HardParameterUpdate(model, old_model),
+        Every(1, Steps, offset=1000): update_model_fn,
     },
 )
 

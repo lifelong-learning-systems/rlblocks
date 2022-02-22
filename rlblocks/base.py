@@ -102,19 +102,26 @@ class StdoutReport(StepObserver):
         )
 
 
-class PeriodicCallbacks(StepObserver):
-    def __init__(
-        self, callbacks_by_timer: Dict[Timer, List[Callable[[], None]]]
-    ) -> None:
+class RunFunctions(Callable[[], None]):
+    def __init__(self, *fns: Callable[[], None]) -> None:
         super().__init__()
-        self.callbacks_by_timer = callbacks_by_timer
+        self.fns = fns
+
+    def __call__(self) -> None:
+        for fn in self.fns:
+            fn()
+
+
+class PeriodicCallbacks(StepObserver):
+    def __init__(self, callback_by_timer: Dict[Timer, Callable[[], None]]) -> None:
+        super().__init__()
+        self.callback_by_timer = callback_by_timer
 
     def receive_steps(self, steps: Iterable[Step]) -> None:
-        for timer, callbacks in self.callbacks_by_timer.items():
+        for timer, callback in self.callback_by_timer.items():
             timer.receive_steps(steps)
             if timer.is_finished():
-                for cb in callbacks:
-                    cb()
+                callback()
                 timer.restart()
 
 
