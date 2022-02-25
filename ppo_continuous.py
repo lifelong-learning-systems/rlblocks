@@ -17,6 +17,13 @@ from torch.distributions import (
 import numpy as np
 
 
+class SafeTanhTransform(TanhTransform):
+    def _inverse(self, y):
+        eps = torch.finfo(y.dtype).eps
+        # clip action to avoid NaNs
+        return super()._inverse(y.clamp(-1.0 + eps, 1.0 - eps))
+
+
 class DiagGaussianPPOModel(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -37,14 +44,11 @@ class DiagGaussianPPOModel(nn.Module):
 
     def action_dist(self, obs: Observation) -> Distribution:
         mean, log_std = self.diag_gaussian(obs).chunk(2, dim=-1)
-        dist = Normal(mean, F.softplus(log_std))
-        # dist = Independent(dist, 1)
+        dist = Normal(mean, log_std.exp())
+        dist = Independent(dist, 1)
         dist = TransformedDistribution(
             dist,
-            ComposeTransform(
-                [TanhTransform(cache_size=1), AffineTransform(0.0, 2.0, cache_size=1)],
-                cache_size=1,
-            ),
+            ComposeTransform([SafeTanhTransform(), AffineTransform(0.0, 2.0)]),
         )
         return dist
 
