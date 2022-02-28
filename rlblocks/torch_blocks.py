@@ -4,12 +4,7 @@ from torch import nn
 from torch.distributions import Distribution
 import numpy as np
 import scipy.signal
-from .base import (
-    Action,
-    Observation,
-    Step,
-    StepObserver,
-)
+from .base import Action, Observation, Transition, TransitionObserver, Vectorized
 
 
 class TorchBatch(NamedTuple):
@@ -282,26 +277,26 @@ class BatchIterator:
             i += self.batch_size
 
 
-class FIFOBuffer(StepObserver):
+class FIFOBuffer(TransitionObserver):
     def __init__(self, max_size: int) -> None:
         self.max_size = max_size
-        self.steps = []
+        self.transitions = []
 
     def __len__(self):
-        return len(self.steps)
+        return len(self.transitions)
 
-    def receive_steps(self, steps: Sequence[Step]) -> None:
-        self.steps.extend(steps)
-        while len(self.steps) > self.max_size:
-            self.steps.pop(0)
-        assert len(self.steps) <= self.max_size
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
+        self.transitions.extend(transitions)
+        while len(self.transitions) > self.max_size:
+            self.transitions.pop(0)
+        assert len(self.transitions) <= self.max_size
 
     def get_batch(self, indices: List[int]) -> TorchBatch:
-        ts = [self.steps[i] for i in indices]
+        ts = [self.transitions[i] for i in indices]
         return TorchBatch(*list(zip(*ts)), None).torch()
 
 
-class GeneralizedAdvantageEstimatingBuffer(StepObserver):
+class GeneralizedAdvantageEstimatingBuffer(TransitionObserver):
     def __init__(
         self,
         value_fn: Callable[[np.ndarray], np.ndarray],
@@ -314,16 +309,16 @@ class GeneralizedAdvantageEstimatingBuffer(StepObserver):
         self.episodes = []
         self.episode_values = []
         self.episode_rewards = []
-        self.steps = []
+        self.transitions = []
 
-    def receive_steps(self, steps: Sequence[Step]) -> None:
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         if len(self.episodes) == 0:
-            for _ in range(len(steps)):
+            for _ in range(len(transitions)):
                 self.episodes.append([])
                 self.episode_values.append([])
                 self.episode_rewards.append([])
-        assert len(self.episodes) == len(steps)
-        for i_ep, t in enumerate(steps):
+        assert len(self.episodes) == len(transitions)
+        for i_ep, t in enumerate(transitions):
             self.episodes[i_ep].append(t)
             self.episode_rewards[i_ep].append(t.reward)
             self.episode_values[i_ep].append(self.value_fn(t.state))
@@ -346,20 +341,20 @@ class GeneralizedAdvantageEstimatingBuffer(StepObserver):
 
         assert len(advantages) == len(self.episodes[i_ep])
         for i_step, t in enumerate(self.episodes[i_ep]):
-            self.steps.append([*t, advantages[i_step]])
+            self.transitions.append([*t, advantages[i_step]])
 
         self.episodes[i_ep].clear()
         self.episode_rewards[i_ep].clear()
         self.episode_values[i_ep].clear()
 
     def __len__(self) -> int:
-        return len(self.steps)
+        return len(self.transitions)
 
     def clear(self):
         self.episodes = []
         self.episode_values = []
         self.episode_rewards = []
-        self.steps = []
+        self.transitions = []
 
     def complete_partial_trajectories(self):
         for i_ep, partial_trajectory in enumerate(self.episodes):
@@ -371,7 +366,7 @@ class GeneralizedAdvantageEstimatingBuffer(StepObserver):
                 )
 
     def get_batch(self, indices: List[int]) -> TorchBatch:
-        ts = [self.steps[i] for i in indices]
+        ts = [self.transitions[i] for i in indices]
         return TorchBatch(*list(zip(*ts))).torch()
 
 

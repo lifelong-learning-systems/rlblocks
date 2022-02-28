@@ -9,8 +9,7 @@ Reward = float
 Done = bool
 
 
-class Step(NamedTuple):  # or StepData, or Step
-    # TODO: is this abstraction even necessary?
+class Transition(NamedTuple):
     state: Observation
     action: Action
     reward: float
@@ -18,9 +17,12 @@ class Step(NamedTuple):  # or StepData, or Step
     next_state: Observation
 
 
-class StepObserver(abc.ABC):
+Vectorized = Iterable
+
+
+class TransitionObserver(abc.ABC):
     @abc.abstractmethod
-    def receive_steps(self, steps: Iterable[Step]) -> None:
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         pass
 
 
@@ -33,7 +35,7 @@ Steps = RLTimeUnit.STEPS
 Episodes = RLTimeUnit.EPISODES
 
 
-class Timer(StepObserver):
+class Timer(TransitionObserver):
     def __init__(self, n: int, unit: RLTimeUnit, *, offset: int = 0) -> None:
         self.n = n
         self.unit = unit
@@ -41,8 +43,8 @@ class Timer(StepObserver):
         self.num_episodes_completed = 0
         self.delay = offset
 
-    def receive_steps(self, steps: Iterable[Step]) -> None:
-        for _obs, _action, _reward, done, _next_obs in steps:
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
+        for _obs, _action, _reward, done, _next_obs in transitions:
             self.num_steps_taken += 1
             self.num_episodes_completed += int(done)
 
@@ -70,15 +72,15 @@ Duration = Timer
 Every = Timer
 
 
-class RewardTracker(StepObserver):
+class RewardTracker(TransitionObserver):
     def __init__(self) -> None:
         super().__init__()
         self.total_reward = 0.0
         self.total_steps = 0
         self.total_episodes = 0
 
-    def receive_steps(self, steps: Iterable[Step]) -> None:
-        for t in steps:
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
+        for t in transitions:
             self.total_reward += t.reward
             self.total_steps += 1
             self.total_episodes += int(t.done)
@@ -107,14 +109,14 @@ class CallFunctions(Callable[[], None]):
             fn()
 
 
-class PeriodicCallbacks(StepObserver):
+class PeriodicCallbacks(TransitionObserver):
     def __init__(self, callback_by_timer: Dict[Timer, Callable[[], None]]) -> None:
         super().__init__()
         self.callback_by_timer = callback_by_timer
 
-    def receive_steps(self, steps: Iterable[Step]) -> None:
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         for timer, callback in self.callback_by_timer.items():
-            timer.receive_steps(steps)
+            timer.receive_transitions(transitions)
             if timer.is_finished():
                 callback()
                 timer.restart()
@@ -125,15 +127,15 @@ def run_env_interaction(
     env_fn: Callable[[], gym.Env],
     num_envs: int = 1,
     choose_action_fn: Callable[[Sequence[Observation]], Action],
-    step_observers: List[StepObserver],
+    transition_observers: List[TransitionObserver],
     duration: Duration,
 ) -> None:
     vec_env: gym.vector.VectorEnv = gym.vector.SyncVectorEnv(
         [env_fn for _ in range(num_envs)]
     )
 
-    if duration not in step_observers:
-        step_observers.append(duration)
+    if duration not in transition_observers:
+        transition_observers.append(duration)
 
     obss = vec_env.reset()
     while not duration.is_finished():
@@ -143,9 +145,10 @@ def run_env_interaction(
             n if not d else i["terminal_observation"]
             for n, d, i in zip(new_obss, dones, infos)
         ]
-        steps = [
-            Step(*values) for values in zip(obss, actions, rewards, dones, next_obss)
+        transitions = [
+            Transition(*values)
+            for values in zip(obss, actions, rewards, dones, next_obss)
         ]
-        for observer in step_observers:
-            observer.receive_steps(steps)
+        for observer in transition_observers:
+            observer.receive_transitions(transitions)
         obss = new_obss

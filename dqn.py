@@ -50,6 +50,6 @@ callbacks = PeriodicCallbacks(
 run_env_interaction(
     env_fn=lambda: gym.make("CartPole-v1"),
     choose_action_fn=epsilon_greedy,
-    step_observers=[buffer, callbacks, stats],
+    transition_observers=[buffer, callbacks, stats],
     duration=Duration(20_000, Steps),
 )
