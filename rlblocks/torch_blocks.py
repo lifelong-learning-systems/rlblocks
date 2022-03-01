@@ -175,27 +175,27 @@ class TDActionValueLoss(Callable[[TorchBatch], torch.Tensor]):
 
 
 class ElasticWeightConsolidationLoss:
-    def __init__(self, ewc_lambda: float):
+    def __init__(self, model: nn.Module, ewc_lambda: float):
+        self._model = model
         self.ewc_lambda = ewc_lambda
 
         # Start with no anchors
         self._anchor_values = []
         self._importance = []
 
-    def __call__(self, model: nn.Module) -> torch.Tensor:  # This does not fit the same Callable template as above
+    def __call__(self) -> torch.Tensor:  # This does not fit the same Callable template as above
         if not self._anchor_values:
-            return torch.zeros([])  # What is the "right" return here? Can it just be literal 0?
+            return 0
 
         loss = sum(
             (((val - anc) ** 2) * imp).sum()
-            for val, anc, imp in zip(model.parameters(), self._anchor_values, self._importance)
+            for val, anc, imp in zip(self._model.parameters(), self._anchor_values, self._importance)
         ) * self.ewc_lambda / 2
 
         return loss
 
     def add_anchors(
             self,
-            model: nn.Module,
             loss_fn: Callable[[TorchBatch], torch.Tensor],
             optimizer: torch.optim.Optimizer,
             batch: TorchBatch,
@@ -208,23 +208,22 @@ class ElasticWeightConsolidationLoss:
             layer.grad.detach().clone() ** 2
             if layer.grad is not None
             else torch.zeros_like(layer)
-            for layer in model.parameters()
+            for layer in self._model.parameters()
         ]
 
         # This is the per-task version of EWC. The online alternative would replace
         # these values (with optional relaxation) instead of extending them
-        self._anchor_values.extend([layer.detach().clone() for layer in model.parameters()])
+        self._anchor_values.extend([layer.detach().clone() for layer in self._model.parameters()])
         self._importance.extend(importance)
 
 
 class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
-    def __init__(self, ewc_lambda: float, update_relaxation: float):
-        super().__init__(ewc_lambda)
+    def __init__(self, model: nn.Module, ewc_lambda: float, update_relaxation: float):
+        super().__init__(model, ewc_lambda)
         self.update_relaxation = update_relaxation
 
     def add_anchors(
             self,
-            model: nn.Module,
             loss_fn: Callable[[TorchBatch], torch.Tensor],
             optimizer: torch.optim.Optimizer,
             batch: TorchBatch,
@@ -237,17 +236,17 @@ class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
             layer.grad.detach().clone() ** 2
             if layer.grad is not None
             else torch.zeros_like(layer)
-            for layer in model.parameters()
+            for layer in self._model.parameters()
         ]
 
         if not self._anchor_values:
-            self._anchor_values = [layer.detach().clone() for layer in model.parameters()]
+            self._anchor_values = [layer.detach().clone() for layer in self._model.parameters()]
             self._importance = importance
         else:
             self._anchor_values = [
                 old * self.update_relaxation
                 + new.detach().clone() * (1 - self.update_relaxation)
-                for old, new in zip(self._anchor_values, model.parameters())
+                for old, new in zip(self._anchor_values, self._model.parameters())
             ]
             self._importance = [
                 old * self.update_relaxation

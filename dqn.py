@@ -18,7 +18,7 @@ optimizer = optim.SGD(model.parameters(), lr=1e-2)
 buffer = FIFOBuffer(max_size=50_000)
 
 dqn_loss_fn = QLoss(model, old_model)
-ewc_loss_fn = OnlineElasticWeightConsolidationLoss(ewc_lambda=1, update_relaxation=0.5)
+ewc_loss_fn = OnlineElasticWeightConsolidationLoss(model=model, ewc_lambda=1, update_relaxation=0.5)
 
 
 def update_model_fn():
@@ -26,7 +26,7 @@ def update_model_fn():
         inds = rng.choice(len(buffer), size=128)
         batch = buffer.get_batch(inds)
         loss = dqn_loss_fn(batch)
-        loss += ewc_loss_fn(model)
+        loss += ewc_loss_fn()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -35,7 +35,7 @@ def update_model_fn():
 def add_ewc_anchors():
     inds = rng.choice(len(buffer), size=128)
     batch = buffer.get_batch(inds)
-    ewc_loss_fn.add_anchors(model, dqn_loss_fn, optimizer, batch)
+    ewc_loss_fn.add_anchors(dqn_loss_fn, optimizer, batch)
     print("Added EWC anchors!")
 
 
