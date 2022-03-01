@@ -18,7 +18,7 @@ optimizer = optim.SGD(model.parameters(), lr=1e-2)
 buffer = FIFOBuffer(max_size=50_000)
 
 dqn_loss_fn = QLoss(model, old_model)
-ewc_loss_fn = ElasticWeightConsolidationLoss(ewc_lambda=1)
+ewc_loss_fn = OnlineElasticWeightConsolidationLoss(ewc_lambda=1, update_relaxation=0.5)
 
 
 def update_model_fn():

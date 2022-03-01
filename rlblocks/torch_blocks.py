@@ -217,6 +217,45 @@ class ElasticWeightConsolidationLoss:
         self._importance.extend(importance)
 
 
+class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
+    def __init__(self, ewc_lambda: float, update_relaxation: float):
+        super().__init__(ewc_lambda)
+        self.update_relaxation = update_relaxation
+
+    def add_anchors(
+            self,
+            model: nn.Module,
+            loss_fn: Callable[[TorchBatch], torch.Tensor],
+            optimizer: torch.optim.Optimizer,
+            batch: TorchBatch,
+    ):
+        optimizer.zero_grad()
+        loss_value = loss_fn(batch)
+        loss_value.backward()  # Gradients now accessible as an attribute of each parameter
+
+        importance = [
+            layer.grad.detach().clone() ** 2
+            if layer.grad is not None
+            else torch.zeros_like(layer)
+            for layer in model.parameters()
+        ]
+
+        if not self._anchor_values:
+            self._anchor_values = [layer.detach().clone() for layer in model.parameters()]
+            self._importance = importance
+        else:
+            self._anchor_values = [
+                old * self.update_relaxation
+                + new.detach().clone() * (1 - self.update_relaxation)
+                for old, new in zip(self._anchor_values, model.parameters())
+            ]
+            self._importance = [
+                old * self.update_relaxation
+                + new * (1 - self.update_relaxation)
+                for old, new in zip(self._importance, importance)
+            ]
+
+
 class SampleAction(Callable[[Observation], Action]):
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
