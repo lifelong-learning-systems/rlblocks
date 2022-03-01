@@ -174,6 +174,49 @@ class TDActionValueLoss(Callable[[TorchBatch], torch.Tensor]):
         return self.criterion(v, target_v)
 
 
+class ElasticWeightConsolidationLoss:
+    def __init__(self, ewc_lambda: float):
+        self.ewc_lambda = ewc_lambda
+
+        # Start with no anchors
+        self._anchor_values = []
+        self._importance = []
+
+    def __call__(self, model: nn.Module) -> torch.Tensor:  # This does not fit the same Callable template as above
+        if not self._anchor_values:
+            return torch.zeros([])  # What is the "right" return here? Can it just be literal 0?
+
+        loss = sum(
+            (((val - anc) ** 2) * imp).sum()
+            for val, anc, imp in zip(model.parameters(), self._anchor_values, self._importance)
+        ) * self.ewc_lambda / 2
+
+        return loss
+
+    def add_anchors(
+            self,
+            model: nn.Module,
+            loss_fn: Callable[[TorchBatch], torch.Tensor],
+            optimizer: torch.optim.Optimizer,
+            batch: TorchBatch,
+    ):
+        optimizer.zero_grad()
+        loss_value = loss_fn(batch)
+        loss_value.backward()  # Gradients now accessible as an attribute of each parameter
+
+        importance = [
+            layer.grad.detach().clone() ** 2
+            if layer.grad is not None
+            else torch.zeros_like(layer)
+            for layer in model.parameters()
+        ]
+
+        # This is the per-task version of EWC. The online alternative would replace
+        # these values (with optional relaxation) instead of extending them
+        self._anchor_values.extend([layer.detach().clone() for layer in model.parameters()])
+        self._importance.extend(importance)
+
+
 class SampleAction(Callable[[Observation], Action]):
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
