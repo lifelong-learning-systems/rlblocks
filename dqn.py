@@ -35,7 +35,10 @@ def update_model_fn():
 def add_ewc_anchors():
     inds = rng.choice(len(buffer), size=128)
     batch = buffer.get_batch(inds)
-    ewc_loss_fn.add_anchors(dqn_loss_fn, optimizer, batch)
+    optimizer.zero_grad()
+    loss_value = dqn_loss_fn(batch)
+    loss_value.backward()  # Gradients now accessible as an attribute of each parameter
+    ewc_loss_fn.add_anchors()
     print("Added EWC anchors!")
 
 

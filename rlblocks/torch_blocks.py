@@ -194,16 +194,10 @@ class ElasticWeightConsolidationLoss:
 
         return loss
 
-    def add_anchors(
-            self,
-            loss_fn: Callable[[TorchBatch], torch.Tensor],
-            optimizer: torch.optim.Optimizer,
-            batch: TorchBatch,
-    ):
-        optimizer.zero_grad()
-        loss_value = loss_fn(batch)
-        loss_value.backward()  # Gradients now accessible as an attribute of each parameter
-
+    def add_anchors(self):
+        # Importance here is computed from parameter gradients
+        # Before calling this method, the user must compute those gradients using something like:
+        #   `loss_fn(batch_data).backward()`
         importance = [
             layer.grad.detach().clone() ** 2
             if layer.grad is not None
@@ -211,7 +205,7 @@ class ElasticWeightConsolidationLoss:
             for layer in self._model.parameters()
         ]
 
-        # This is the per-task version of EWC. The online alternative would replace
+        # This is the per-task version of EWC. The online alternative replaces
         # these values (with optional relaxation) instead of extending them
         self._anchor_values.extend([layer.detach().clone() for layer in self._model.parameters()])
         self._importance.extend(importance)
@@ -222,16 +216,10 @@ class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
         super().__init__(model, ewc_lambda)
         self.update_relaxation = update_relaxation
 
-    def add_anchors(
-            self,
-            loss_fn: Callable[[TorchBatch], torch.Tensor],
-            optimizer: torch.optim.Optimizer,
-            batch: TorchBatch,
-    ):
-        optimizer.zero_grad()
-        loss_value = loss_fn(batch)
-        loss_value.backward()  # Gradients now accessible as an attribute of each parameter
-
+    def add_anchors(self):
+        # Importance here is computed from parameter gradients
+        # Before calling this method, the user must compute those gradients using something like:
+        #   `loss_fn(batch_data).backward()`
         importance = [
             layer.grad.detach().clone() ** 2
             if layer.grad is not None
