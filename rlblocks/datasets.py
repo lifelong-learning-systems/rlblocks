@@ -1,10 +1,40 @@
 import abc
 from typing import *
+import torch
 from torch.utils.data import Dataset
-from .base import Transition
+from .base import Transition, TransitionObserver, Vectorized
 import numpy as np
 
 PriorityFn = Callable[[Transition], float]
+
+
+class TorchBatch(NamedTuple):
+    state: torch.FloatTensor
+    action: torch.Tensor
+    reward: torch.FloatTensor
+    done: torch.FloatTensor
+    next_state: torch.FloatTensor
+    advantage: Optional[torch.FloatTensor]
+
+
+def collate(transitions: List[Transition]) -> TorchBatch:
+    states, actions, rewards, dones, next_states, *advantage = zip(*transitions)
+    assert len(advantage) == 0 or len(advantage) == 1
+
+    states = torch.from_numpy(np.array(states)).float()
+    actions = torch.from_numpy(np.array(actions))
+    if actions.dtype == torch.int64:
+        actions = actions.unsqueeze(1)
+    rewards = torch.from_numpy(np.array(rewards)).float().unsqueeze(1)
+    dones = torch.from_numpy(np.array(dones)).float().unsqueeze(1)
+    next_states = torch.from_numpy(np.array(next_states)).float()
+
+    if len(advantage) > 0:
+        advantage = torch.from_numpy(np.array(advantage[0])).float().unsqueeze(1)
+    else:
+        advantage = None
+
+    return TorchBatch(states, actions, rewards, dones, next_states, advantage)
 
 
 class TransitionsWithMaxReward(PriorityFn):
@@ -37,7 +67,7 @@ class MostRecentlyAddedTransitions(PriorityFn):
         return priority
 
 
-class PrioritizedTransitionDataset(Dataset[Transition]):
+class PrioritizedTransitionDataset(Dataset[Transition], TransitionObserver):
     def __init__(
         self, max_size: int, keep: PriorityFn = MostRecentlyAddedTransitions()
     ) -> None:
@@ -45,9 +75,10 @@ class PrioritizedTransitionDataset(Dataset[Transition]):
         self.max_size = max_size
         self.priority_fn = keep
 
-    def add(self, transition: Transition) -> None:
-        priority = self.priority_fn(transition)
-        self.priority_queue.append((transition, priority))
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
+        for transition in transitions:
+            priority = self.priority_fn(transition)
+            self.priority_queue.append((transition, priority))
         if len(self.priority_queue) > self.max_size:
             self._drop_by_priority()
 
@@ -64,6 +95,8 @@ class PrioritizedTransitionDataset(Dataset[Transition]):
     def __len__(self) -> int:
         return len(self.priority_queue)
 
+
+# TODO add GeneralizedAdvantageEstimationDataset
 
 BatchGenerator = Generator[List[Transition], None, None]
 
