@@ -2,7 +2,7 @@ from copy import deepcopy
 import gym
 from rlblocks import *
 from rlblocks.datasets import (
-    PrioritizedTransitionDataset,
+    TransitionDatasetWithMaxCapacity,
     UniformRandomBatchSampler,
     collate,
 )
@@ -20,7 +20,7 @@ model = nn.Sequential(
 )
 old_model = deepcopy(model)
 optimizer = optim.SGD(model.parameters(), lr=1e-2)
-buffer = PrioritizedTransitionDataset(50_000)
+buffer = TransitionDatasetWithMaxCapacity(10_000)
 sampler = UniformRandomBatchSampler(buffer)
 
 dqn_loss_fn = QLoss(model, old_model)
