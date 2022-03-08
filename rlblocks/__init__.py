@@ -34,10 +34,7 @@ from rlblocks.torch_blocks import (
     SoftParameterUpdate,
     PolyakParameterUpdate,
     HardParameterUpdate,
-    FIFOBuffer,
     batch_normalize_advantange,
     NumpyToTorchConverter,
     SampleAction,
-    BatchIterator,
-    GeneralizedAdvantageEstimatingBuffer,
 )

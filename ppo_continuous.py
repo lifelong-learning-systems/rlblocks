@@ -2,6 +2,11 @@ from copy import deepcopy
 import gym
 from typing import *
 from rlblocks import *
+from rlblocks.datasets import (
+    TransitionDatasetWithAdvantage,
+    UniformRandomBatchSampler,
+    collate,
+)
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
@@ -62,20 +67,20 @@ rng = np.random.default_rng(0)
 model = DiagGaussianPPOModel()
 old_model = deepcopy(model)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
-buffer = GeneralizedAdvantageEstimatingBuffer(
+buffer = TransitionDatasetWithAdvantage(
     value_fn=NumpyToTorchConverter(model.state_value)
 )
+sampler = UniformRandomBatchSampler(buffer)
 
 policy_loss_fn = ClippedPolicyGradientLoss(model.action_dist, old_model.action_dist)
 value_loss_fn = TDAdvantageLoss(model.state_value, old_model.state_value)
 update_old_model_fn = HardParameterUpdate(model, old_model)
-get_buffer_iterator = BatchIterator(buffer, batch_size=64, rng=rng)
 
 
 def update_model_fn():
     for _i_epoch in range(4):
-        for batch in get_buffer_iterator():
-            batch = batch_normalize_advantange(batch)
+        for transitions in sampler.generate_batches(batch_size=64, drop_last=True):
+            batch = collate(transitions)
             pi_loss = policy_loss_fn(batch)
             v_loss = value_loss_fn(batch)
             optimizer.zero_grad()
