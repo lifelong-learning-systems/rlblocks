@@ -174,6 +174,75 @@ class TDActionValueLoss(Callable[[TorchBatch], torch.Tensor]):
         return self.criterion(v, target_v)
 
 
+class ElasticWeightConsolidationLoss:
+    def __init__(self, model: nn.Module, ewc_lambda: float):
+        self._model = model
+        self.ewc_lambda = ewc_lambda
+
+        # Start with no anchors
+        self._anchor_values = []
+        self._importance = []
+
+    def __call__(self) -> torch.Tensor:  # This does not fit the same Callable template as above
+        if not self._anchor_values:
+            return 0
+
+        loss = sum(
+            (((val - anc) ** 2) * imp).sum()
+            for val, anc, imp in zip(self._model.parameters(), self._anchor_values, self._importance)
+        ) * self.ewc_lambda / 2
+
+        return loss
+
+    def add_anchors(self):
+        # Importance here is computed from parameter gradients
+        # Before calling this method, the user must compute those gradients using something like:
+        #   `loss_fn(batch_data).backward()`
+        importance = [
+            layer.grad.detach().clone() ** 2
+            if layer.grad is not None
+            else torch.zeros_like(layer)
+            for layer in self._model.parameters()
+        ]
+
+        # This is the per-task version of EWC. The online alternative replaces
+        # these values (with optional relaxation) instead of extending them
+        self._anchor_values.extend([layer.detach().clone() for layer in self._model.parameters()])
+        self._importance.extend(importance)
+
+
+class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
+    def __init__(self, model: nn.Module, ewc_lambda: float, update_relaxation: float):
+        super().__init__(model, ewc_lambda)
+        self.update_relaxation = update_relaxation
+
+    def add_anchors(self):
+        # Importance here is computed from parameter gradients
+        # Before calling this method, the user must compute those gradients using something like:
+        #   `loss_fn(batch_data).backward()`
+        importance = [
+            layer.grad.detach().clone() ** 2
+            if layer.grad is not None
+            else torch.zeros_like(layer)
+            for layer in self._model.parameters()
+        ]
+
+        if not self._anchor_values:
+            self._anchor_values = [layer.detach().clone() for layer in self._model.parameters()]
+            self._importance = importance
+        else:
+            self._anchor_values = [
+                old * self.update_relaxation
+                + new.detach().clone() * (1 - self.update_relaxation)
+                for old, new in zip(self._anchor_values, self._model.parameters())
+            ]
+            self._importance = [
+                old * self.update_relaxation
+                + new * (1 - self.update_relaxation)
+                for old, new in zip(self._importance, importance)
+            ]
+
+
 class SampleAction(Callable[[Observation], Action]):
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
