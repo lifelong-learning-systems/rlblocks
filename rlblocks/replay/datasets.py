@@ -2,7 +2,7 @@ import abc
 from typing import *
 import torch
 from torch.utils.data import Dataset
-from .base import Transition, TransitionObserver, Vectorized
+from ..base import Transition, TransitionObserver, Vectorized
 import numpy as np
 import scipy
 

@@ -1,7 +1,7 @@
 from copy import deepcopy
 import gym
 from rlblocks import *
-from rlblocks.datasets import (
+from rlblocks.replay.datasets import (
     TransitionDatasetWithMaxCapacity,
     UniformRandomBatchSampler,
     collate,
@@ -24,7 +24,9 @@ buffer = TransitionDatasetWithMaxCapacity(10_000)
 sampler = UniformRandomBatchSampler(buffer)
 
 dqn_loss_fn = QLoss(model, old_model)
-ewc_loss_fn = OnlineElasticWeightConsolidationLoss(model=model, ewc_lambda=1, update_relaxation=0.5)
+ewc_loss_fn = OnlineElasticWeightConsolidationLoss(
+    model=model, ewc_lambda=1, update_relaxation=0.5
+)
 
 
 def update_model_fn():

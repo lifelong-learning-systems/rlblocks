@@ -2,7 +2,7 @@ from copy import deepcopy
 import gym
 from typing import *
 from rlblocks import *
-from rlblocks.datasets import (
+from rlblocks.replay.datasets import (
     TransitionDatasetWithAdvantage,
     UniformRandomBatchSampler,
     collate,
