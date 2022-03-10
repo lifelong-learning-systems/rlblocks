@@ -43,6 +43,11 @@ class Dqn(tella.ContinualRLAgent):
             config_file,
         )
 
+        # Check that this environment is compatible with DQN
+        assert isinstance(
+            action_space, gym.spaces.Discrete
+        ), "This DQN agent requires discrete action spaces"
+
         self.rng = np.random.default_rng(self.rng_seed)
 
         self.replay_buffer = TransitionDatasetWithMaxCapacity(10_000)
@@ -54,7 +59,7 @@ class Dqn(tella.ContinualRLAgent):
         self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2)
 
         self.epsilon_greedy_policy = ChooseBetween(
-            lambda o: self.rng.choice(2, size=len(o)),  # TODO generalize to action spaces
+            lambda o: self.rng.choice(self.action_space.n, size=len(o)),
             NumpyToTorchConverter(ArgmaxAction(self.model)),
             prob_fn=Interpolate(start=1.0, end=0.0, n=2000),
             rng=self.rng,
