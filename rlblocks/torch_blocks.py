@@ -1,3 +1,4 @@
+import itertools
 from typing import *
 import torch
 from torch import nn
@@ -189,7 +190,11 @@ class ElasticWeightConsolidationLoss:
 
         loss = sum(
             (((val - anc) ** 2) * imp).sum()
-            for val, anc, imp in zip(self._model.parameters(), self._anchor_values, self._importance)
+            for val, anc, imp in zip(
+                itertools.cycle(self._model.parameters()),
+                self._anchor_values,
+                self._importance,
+            )
         ) * self.ewc_lambda / 2
 
         return loss
