@@ -24,6 +24,8 @@ def collate(transitions: List[Transition]) -> TorchBatch:
 
     states = torch.from_numpy(np.array(states)).float()
     actions = torch.from_numpy(np.array(actions))
+    if actions.dtype == torch.int32:
+        actions = actions.type(torch.int64)
     if actions.dtype == torch.int64:
         actions = actions.unsqueeze(1)
     rewards = torch.from_numpy(np.array(rewards)).float().unsqueeze(1)

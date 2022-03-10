@@ -19,6 +19,8 @@ class TorchBatch(NamedTuple):
     def torch(self) -> "TorchBatch":
         state = torch.from_numpy(np.array(self.state)).float()
         action = torch.from_numpy(np.array(self.action))
+        if action.dtype == torch.int32:
+            action = action.type(torch.int64)
         if action.dtype == torch.int64:
             action = action.unsqueeze(1)
         reward = torch.from_numpy(np.array(self.reward)).float().unsqueeze(1)
