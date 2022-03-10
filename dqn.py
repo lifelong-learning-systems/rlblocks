@@ -24,29 +24,15 @@ buffer = TransitionDatasetWithMaxCapacity(10_000)
 sampler = UniformRandomBatchSampler(buffer)
 
 dqn_loss_fn = QLoss(model, old_model)
-ewc_loss_fn = OnlineElasticWeightConsolidationLoss(
-    model=model, ewc_lambda=1, update_relaxation=0.5
-)
 
 
 def update_model_fn():
     for _ in range(4):
         batch = collate(sampler.sample_batch(batch_size=128))
         loss = dqn_loss_fn(batch)
-        loss += ewc_loss_fn()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
-
-def add_ewc_anchors():
-    inds = rng.choice(len(buffer), size=128)
-    batch = buffer.get_batch(inds)
-    optimizer.zero_grad()
-    loss_value = dqn_loss_fn(batch)
-    loss_value.backward()  # Gradients now accessible as an attribute of each parameter
-    ewc_loss_fn.add_anchors()
-    print("Added EWC anchors!")
 
 
 epsilon_greedy = ChooseBetween(
@@ -63,7 +49,6 @@ callbacks = PeriodicCallbacks(
         Every(100, Steps): HardParameterUpdate(model, old_model),
         Every(1, Steps, offset=1000): update_model_fn,
         Every(20, Steps): lambda: print(stats),
-        Every(1000, Steps, offset=1000): add_ewc_anchors,
     },
 )
 
