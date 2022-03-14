@@ -58,9 +58,10 @@ class Dqn(tella.ContinualRLAgent):
         self.dqn_loss_fn = QLoss(self.model, self.target_model)
         self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2)
 
+        self.greedy_polixy = NumpyToTorchConverter(ArgmaxAction(self.model))
         self.epsilon_greedy_policy = ChooseBetween(
             lambda o: self.rng.choice(self.action_space.n, size=len(o)),
-            NumpyToTorchConverter(ArgmaxAction(self.model)),
+            self.greedy_policy,
             prob_fn=Interpolate(start=1.0, end=0.0, n=2000),
             rng=self.rng,
         )
@@ -90,7 +91,8 @@ class Dqn(tella.ContinualRLAgent):
         self, observations: typing.List[typing.Optional[tella.Observation]]
     ) -> typing.List[typing.Optional[tella.Action]]:
         # Handling masked observation vectors is a bit messy. Maybe this should be provided as a function somewhere
-        actions = self.epsilon_greedy_policy(
+        policy = self.epsilon_greedy_policy if self.is_learning_allowed else self.greedy_policy
+        actions = policy(
             np.array([obs for obs in observations if obs is not None])
         ).tolist()
         return [actions.pop(0) if obs is not None else None for obs in observations]
