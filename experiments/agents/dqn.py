@@ -1,10 +1,10 @@
 from copy import deepcopy
 import typing
-
 import gym
 import numpy as np
 import tella
 from torch import nn, optim
+from torch.distributions import Categorical
 
 from rlblocks import (
     ArgmaxAction,
@@ -23,6 +23,7 @@ from rlblocks.replay.datasets import (
     UniformRandomBatchSampler,
     collate,
 )
+from rlblocks.torch_blocks import DoubleQLoss, SampleAction
 
 
 class Dqn(tella.ContinualRLAgent):
@@ -55,16 +56,13 @@ class Dqn(tella.ContinualRLAgent):
 
         self.model = network
         self.target_model = deepcopy(network)
-        self.dqn_loss_fn = QLoss(self.model, self.target_model)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2)
+        self.dqn_loss_fn = DoubleQLoss(self.model, self.target_model)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=3e-4)
 
-        self.greedy_policy = NumpyToTorchConverter(ArgmaxAction(self.model))
-        self.epsilon_greedy_policy = ChooseBetween(
-            lambda o: self.rng.choice(self.action_space.n, size=len(o)),
-            self.greedy_policy,
-            prob_fn=Interpolate(start=1.0, end=0.0, n=2000),
-            rng=self.rng,
+        self.sample_policy = NumpyToTorchConverter(
+            SampleAction(lambda x: Categorical(logits=self.model(x)))
         )
+        # self.greedy_policy = NumpyToTorchConverter(ArgmaxAction(self.model))
 
         self.reward_tracker = RewardTracker()
         self.transition_observers = [
@@ -72,18 +70,23 @@ class Dqn(tella.ContinualRLAgent):
             self.reward_tracker,
             PeriodicCallbacks(
                 {
-                    Every(100, Steps): HardParameterUpdate(
+                    Every(2000, Steps): HardParameterUpdate(
                         self.model, self.target_model
                     ),
                     Every(1, Steps, offset=1000): self.update_model,
-                    Every(20, Steps): lambda: print(self.reward_tracker),
+                    Every(1000, Steps): lambda: print(self.reward_tracker),
                 },
             ),
         ]
 
-    def update_model(self, n_iter: int = 4):
-        for _ in range(n_iter):
-            batch = collate(self.replay_sampler.sample_batch(batch_size=128))
+    def task_variant_start(
+        self, task_name: typing.Optional[str], variant_name: typing.Optional[str]
+    ) -> None:
+        self.reward_tracker.clear()
+
+    def update_model(self, n_iter: int = 2):
+        for _ in range(self.num_envs * n_iter):
+            batch = collate(self.replay_sampler.sample_batch(batch_size=32))
             loss = self.dqn_loss_fn(batch)
             self.optimizer.zero_grad()
             loss.backward()
@@ -92,11 +95,7 @@ class Dqn(tella.ContinualRLAgent):
     def choose_actions(
         self, observations: typing.List[typing.Optional[tella.Observation]]
     ) -> typing.List[typing.Optional[tella.Action]]:
-        policy = (
-            self.epsilon_greedy_policy
-            if self.is_learning_allowed
-            else self.greedy_policy
-        )
+        policy = self.sample_policy
         # Handling masked observation vectors is a bit messy. Maybe this should be provided as a function somewhere
         actions = policy(
             np.array([obs for obs in observations if obs is not None])

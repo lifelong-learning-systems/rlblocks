@@ -10,16 +10,16 @@ from tella.curriculum import (
     simple_eval_block,
     simple_learn_block,
 )
-from gym_minigrid.envs import CrossingEnv, DynamicObstaclesEnv, EmptyEnv
+from gym_minigrid.envs import CrossingEnv, EmptyEnv
 from gym_minigrid.wrappers import ImgObsWrapper
-from tella._curriculums.minigrid.m21 import MiniGridReducedActionSpaceWrapper
+from tella._curriculums.minigrid.envs import CustomDynamicObstaclesEnv
 
 GRID_SIZE = 7
 
 
 class LavaCrossing(CrossingEnv):
     def __init__(self):
-        super().__init__(size=GRID_SIZE, num_crossings=2)
+        super().__init__(size=GRID_SIZE, num_crossings=1)
 
 
 class Empty(EmptyEnv):
@@ -27,20 +27,19 @@ class Empty(EmptyEnv):
         super().__init__(size=GRID_SIZE)
 
 
-class ObstacleCrossing(DynamicObstaclesEnv):
+class ObstacleCrossing(CustomDynamicObstaclesEnv):
     def __init__(self):
-        super().__init__(size=GRID_SIZE, n_obstacles=2)
+        super().__init__(size=GRID_SIZE, n_obstacles=1)
 
 
 class StandardizedMiniGridWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env) -> None:
-        env.action_space = gym.spaces.Discrete(7)
+        env.action_space = gym.spaces.Discrete(3)
+        env = ImgObsWrapper(env)
         super().__init__(env)
-        self.env = ImgObsWrapper(self.env)
-        self.env = MiniGridReducedActionSpaceWrapper(self.env, num_actions=3)
-        self.env.max_steps = 4 * self.env.width * self.env.height
 
     def step(self, action):
+        assert 0 <= action < 3
         obs, reward, done, info = super().step(action)
 
         if not done:
@@ -70,14 +69,14 @@ def obstacle_crossing():
 
 
 TASKS = [
-    lava_crossing,
     empty_crossing,
     obstacle_crossing,
+    lava_crossing,
 ]
 
 
 class MiniGridCrossing(InterleavedEvalCurriculum):
-    NUM_LEARN_STEPS_PER_VARIANT = 100_000
+    NUM_LEARN_STEPS_PER_VARIANT = 20_000
     NUM_EVAL_EPISODES_PER_VARIANT = 10
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
