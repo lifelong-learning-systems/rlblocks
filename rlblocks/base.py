@@ -78,8 +78,15 @@ class RewardTracker(TransitionObserver):
         self.total_reward = 0.0
         self.total_steps = 0
         self.total_episodes = 0
+        self.num_envs = None
+
+    def clear(self):
+        self.total_reward = 0.0
+        self.total_steps = 0
+        self.total_episodes = 0
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
+        self.num_envs = len(transitions)
         for t in transitions:
             self.total_reward += t.reward
             self.total_steps += 1
@@ -88,13 +95,13 @@ class RewardTracker(TransitionObserver):
     def __str__(self) -> str:
         return str(
             {
-                "mean_episode_reward": 0
-                if self.total_episodes == 0
-                else self.total_reward / self.total_episodes,
-                "mean_episode_length": 0
-                if self.total_episodes == 0
-                else self.total_steps / self.total_episodes,
-                "num_episodes": self.total_episodes,
+                "total_reward": self.total_reward,
+                "num_episodes": self.total_episodes + self.num_envs,
+                "num_steps": self.total_steps,
+                "mean_episode_reward": self.total_reward
+                / (self.total_episodes + self.num_envs),
+                "mean_episode_length": self.total_steps
+                / (self.total_episodes + self.num_envs),
             }
         )
 

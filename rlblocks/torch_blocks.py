@@ -186,18 +186,24 @@ class ElasticWeightConsolidationLoss:
         self._anchor_values = []
         self._importance = []
 
-    def __call__(self) -> torch.Tensor:  # This does not fit the same Callable template as above
+    def __call__(
+        self,
+    ) -> torch.Tensor:  # This does not fit the same Callable template as above
         if not self._anchor_values:
             return 0
 
-        loss = sum(
-            (((val - anc) ** 2) * imp).sum()
-            for val, anc, imp in zip(
-                itertools.cycle(self._model.parameters()),
-                self._anchor_values,
-                self._importance,
+        loss = (
+            sum(
+                (((val - anc) ** 2) * imp).sum()
+                for val, anc, imp in zip(
+                    itertools.cycle(self._model.parameters()),
+                    self._anchor_values,
+                    self._importance,
+                )
             )
-        ) * self.ewc_lambda / 2
+            * self.ewc_lambda
+            / 2
+        )
 
         return loss
 
@@ -214,7 +220,9 @@ class ElasticWeightConsolidationLoss:
 
         # This is the per-task version of EWC. The online alternative replaces
         # these values (with optional relaxation) instead of extending them
-        self._anchor_values.extend([layer.detach().clone() for layer in self._model.parameters()])
+        self._anchor_values.extend(
+            [layer.detach().clone() for layer in self._model.parameters()]
+        )
         self._importance.extend(importance)
 
 
@@ -235,7 +243,9 @@ class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
         ]
 
         if not self._anchor_values:
-            self._anchor_values = [layer.detach().clone() for layer in self._model.parameters()]
+            self._anchor_values = [
+                layer.detach().clone() for layer in self._model.parameters()
+            ]
             self._importance = importance
         else:
             self._anchor_values = [
@@ -244,8 +254,7 @@ class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
                 for old, new in zip(self._anchor_values, self._model.parameters())
             ]
             self._importance = [
-                old * self.update_relaxation
-                + new * (1 - self.update_relaxation)
+                old * self.update_relaxation + new * (1 - self.update_relaxation)
                 for old, new in zip(self._importance, importance)
             ]
 
@@ -292,11 +301,14 @@ class ChooseBetween(Callable[[Observation], Action]):
         self.rng = rng
 
     def __call__(self, observation: Observation) -> Action:
-        decision_p = self.prob_fn()
-        if self.rng.random() <= decision_p:
-            return self.action_fn_le(observation)
-        else:
-            return self.action_fn_g(observation)
+        le = self.action_fn_le(observation)
+        g = self.action_fn_g(observation)
+        return np.array(
+            [
+                le[i] if self.rng.random() <= self.prob_fn() else g[i]
+                for i in range(len(observation))
+            ]
+        )
 
 
 class Interpolate(Callable[[], float]):
