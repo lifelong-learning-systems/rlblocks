@@ -4,6 +4,12 @@ import gym
 import tella
 
 from experiments.agents import Dqn, make_cnn
+from experiments.curriculums.minigrid import (
+    MiniGridCrossing,
+    LavaCrossingSteCurriculum,
+    EmptyCrossingSteCurriculum,
+    ObstacleCrossingSteCurriculum,
+)
 
 
 class DqnCnn(Dqn):
@@ -25,10 +31,35 @@ class DqnCnn(Dqn):
         )
 
 
-if __name__ == "__main__":
+def train_stes():
     tella.rl_experiment(
         agent_factory=DqnCnn,
-        curriculum_factory=tella.curriculum.curriculum_registry["MiniGridSimpleCrossingS9N1"],
+        curriculum_factory=LavaCrossingSteCurriculum,
+        num_lifetimes=1,
+        num_parallel_envs=6,
+        log_dir="logs",
+    )
+    tella.rl_experiment(
+        agent_factory=DqnCnn,
+        curriculum_factory=EmptyCrossingSteCurriculum,
+        num_lifetimes=1,
+        num_parallel_envs=6,
+        log_dir="logs",
+    )
+    tella.rl_experiment(
+        agent_factory=DqnCnn,
+        curriculum_factory=ObstacleCrossingSteCurriculum,
+        num_lifetimes=1,
+        num_parallel_envs=6,
+        log_dir="logs",
+    )
+
+
+if __name__ == "__main__":
+    # train_stes()
+    tella.rl_experiment(
+        agent_factory=DqnCnn,
+        curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
         num_parallel_envs=1,
         log_dir="logs",

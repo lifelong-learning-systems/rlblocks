@@ -34,7 +34,6 @@ class ObstacleCrossing(DynamicObstaclesEnv):
 
 class StandardizedMiniGridWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env) -> None:
-        env.action_space = gym.spaces.Discrete(7)
         super().__init__(env)
         self.env = ImgObsWrapper(self.env)
         self.env = MiniGridReducedActionSpaceWrapper(self.env, num_actions=3)
@@ -77,22 +76,24 @@ TASKS = [
 
 
 class MiniGridCrossing(InterleavedEvalCurriculum):
-    NUM_LEARN_STEPS_PER_VARIANT = 100_000
-    NUM_EVAL_EPISODES_PER_VARIANT = 10
+    NUM_LEARN_STEPS_PER_VARIANT = 50_000
+    NUM_EVAL_EPISODES_PER_VARIANT = 100
+    NUM_LOOPS_THROUGH_TASKS = 2
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
-        for cls in TASKS:
-            yield simple_learn_block(
-                [
-                    TaskVariant(
-                        cls,
-                        task_label=cls.__name__,
-                        variant_label="Default",
-                        num_steps=self.NUM_LEARN_STEPS_PER_VARIANT,
-                        rng_seed=self.rng.bit_generator.random_raw(),
-                    )
-                ]
-            )
+        for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
+            for cls in TASKS:
+                yield simple_learn_block(
+                    [
+                        TaskVariant(
+                            cls,
+                            task_label=cls.__name__,
+                            variant_label="Default",
+                            num_steps=self.NUM_LEARN_STEPS_PER_VARIANT,
+                            rng_seed=self.rng.bit_generator.random_raw(),
+                        )
+                    ]
+                )
 
     def eval_block(self) -> EvalBlock:
         rng = np.random.default_rng(self.eval_rng_seed)
@@ -109,3 +110,60 @@ class MiniGridCrossing(InterleavedEvalCurriculum):
 
 
 tella.curriculum.curriculum_registry["MiniGridCrossing"] = MiniGridCrossing
+
+
+class LavaCrossingSteCurriculum(MiniGridCrossing):
+    NUM_LEARN_STEPS_PER_VARIANT = 50_000
+    NUM_LOOPS_THROUGH_TASKS = 5
+
+    def learn_blocks(self) -> typing.Iterable[LearnBlock]:
+        for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
+            yield simple_learn_block(
+                [
+                    TaskVariant(
+                        lava_crossing,
+                        task_label="lava_crossing",
+                        variant_label="Default",
+                        num_steps=self.NUM_LEARN_STEPS_PER_VARIANT,
+                        rng_seed=self.rng.bit_generator.random_raw(),
+                    )
+                ]
+            )
+
+
+class EmptyCrossingSteCurriculum(MiniGridCrossing):
+    NUM_LEARN_STEPS_PER_VARIANT = 50_000
+    NUM_LOOPS_THROUGH_TASKS = 5
+
+    def learn_blocks(self) -> typing.Iterable[LearnBlock]:
+        for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
+            yield simple_learn_block(
+                [
+                    TaskVariant(
+                        empty_crossing,
+                        task_label="empty_crossing",
+                        variant_label="Default",
+                        num_steps=self.NUM_LEARN_STEPS_PER_VARIANT,
+                        rng_seed=self.rng.bit_generator.random_raw(),
+                    )
+                ]
+            )
+
+
+class ObstacleCrossingSteCurriculum(MiniGridCrossing):
+    NUM_LEARN_STEPS_PER_VARIANT = 50_000
+    NUM_LOOPS_THROUGH_TASKS = 5
+
+    def learn_blocks(self) -> typing.Iterable[LearnBlock]:
+        for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
+            yield simple_learn_block(
+                [
+                    TaskVariant(
+                        obstacle_crossing,
+                        task_label="obstacle_crossing",
+                        variant_label="Default",
+                        num_steps=self.NUM_LEARN_STEPS_PER_VARIANT,
+                        rng_seed=self.rng.bit_generator.random_raw(),
+                    )
+                ]
+            )

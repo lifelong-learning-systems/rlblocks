@@ -29,16 +29,44 @@ class MiniGridIndexToOneHot(nn.Module):
         ], dim=-1).permute(0, 3, 1, 2).type(torch.float32)
 
 
+class MiniGridObjectIndexToOneHot(nn.Module):
+    """
+    One-hot encodings from index as in :class:MiniGridIndexToOneHot, but here
+    using only the object type, not color or state
+    """
+    def forward(self, x):
+        return tnnf.one_hot(x[..., 0].type(torch.int64), num_classes=11).permute(0, 3, 1, 2).type(torch.float32)
+
+
 # CNN network for minigrid
 def make_cnn() -> nn.Module:
+    # return nn.Sequential(
+    #     MiniGridObjectIndexToOneHot(),
+    #     nn.Conv2d(11, 3, (1, 1)),  # 7x7x11 -> 7x7x3
+    #     nn.ReLU(),
+    #     nn.Flatten(),
+    #     nn.Linear(7*7*3, 32),
+    #     nn.ReLU(),
+    #     nn.Linear(32, 3),
+    #     nn.Sigmoid(),  # Assuming Q values in [0, 1]
+    # )
     return nn.Sequential(
-        MiniGridIndexToOneHot(),
-        nn.Conv2d(11+6+3, 8, (1, 1)),
+        MiniGridObjectIndexToOneHot(),
+        nn.Conv2d(11, 3, (1, 1)),  # 7x7x11 -> 7x7x3
         nn.ReLU(),
-        nn.Conv2d(8, 64, (3, 3)),
+        nn.Conv2d(3, 16, (3, 3)),  # 7x7x3 -> 5x5x16
         nn.ReLU(),
-        nn.Conv2d(64, 32, (3, 3)),
+        nn.Conv2d(16, 32, (3, 3)),  # 5x5x16 -> 3x3x32
         nn.ReLU(),
-        nn.Conv2d(32, 6, (3, 3)),
+        nn.Conv2d(32, 64, (3, 3)),  # 3x3x32 -> 1x1x64
+        nn.ReLU(),
         nn.Flatten(),
+        nn.Linear(64, 32),
+        nn.ReLU(),
+        nn.Linear(32, 16),
+        nn.ReLU(),
+        nn.Linear(16, 8),
+        nn.ReLU(),
+        nn.Linear(8, 3),
+        nn.Sigmoid(),  # Assuming Q values in [0, 1]
     )

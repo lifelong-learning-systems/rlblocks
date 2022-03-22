@@ -1,3 +1,4 @@
+from collections import Counter
 from copy import deepcopy
 import typing
 
@@ -50,6 +51,8 @@ class Dqn(tella.ContinualRLAgent):
 
         self.rng = np.random.default_rng(self.rng_seed)
 
+        self.states_visited = Counter()
+
         self.replay_buffer = TransitionDatasetWithMaxCapacity(10_000)
         self.replay_sampler = UniformRandomBatchSampler(self.replay_buffer)
 
@@ -62,7 +65,7 @@ class Dqn(tella.ContinualRLAgent):
         self.epsilon_greedy_policy = ChooseBetween(
             lambda o: self.rng.choice(self.action_space.n, size=len(o)),
             self.greedy_policy,
-            prob_fn=Interpolate(start=1.0, end=0.0, n=2000),
+            prob_fn=Interpolate(start=1.0, end=0.01, n=10_000),
             rng=self.rng,
         )
 
@@ -72,11 +75,11 @@ class Dqn(tella.ContinualRLAgent):
             self.reward_tracker,
             PeriodicCallbacks(
                 {
-                    Every(100, Steps): HardParameterUpdate(
+                    Every(500, Steps): HardParameterUpdate(
                         self.model, self.target_model
                     ),
-                    Every(1, Steps, offset=1000): self.update_model,
-                    Every(20, Steps): lambda: print(self.reward_tracker),
+                    Every(1, Steps, offset=200): self.update_model,
+                    Every(100, Steps): lambda: print(self.reward_tracker),
                 },
             ),
         ]
