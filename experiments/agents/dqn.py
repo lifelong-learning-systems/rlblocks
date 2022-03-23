@@ -1,5 +1,4 @@
 import collections
-from collections import Counter
 from copy import deepcopy
 import typing
 
@@ -95,8 +94,6 @@ class Dqn(tella.ContinualRLAgent):
         ), "This DQN agent requires discrete action spaces"
 
         self.rng = np.random.default_rng(self.rng_seed)
-
-        self.states_visited = Counter()
 
         self.replay_buffer = TransitionDatasetWithMaxCapacity(50_000)
         self.replay_sampler = UniformRandomBatchSampler(self.replay_buffer)
