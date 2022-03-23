@@ -13,6 +13,7 @@ from rlblocks import (
     Interpolate,
     NumpyToTorchConverter,
     RewardTracker,
+    ActionTracker,
     Every,
     Steps,
     HardParameterUpdate,
@@ -23,7 +24,32 @@ from rlblocks.replay.datasets import (
     TransitionDatasetWithMaxCapacity,
     UniformRandomBatchSampler,
     collate,
+    TorchBatch,
 )
+
+
+class ExplorationSchedule(typing.Callable[[], float]):
+    def __init__(self, halflife: float, period: float, maximum: float = 1., minimum: float = 0.) -> None:
+        self.halflife = halflife
+        self.base = 2 ** (1 / halflife)
+
+        self.period = period
+
+        assert 0 <= minimum < maximum <= 1
+        self.maximum = maximum
+        self.minimum = minimum
+        self.range = maximum - minimum
+
+        self.i = 0
+        self.val = None
+
+    def __call__(self) -> float:
+        self.i += 1
+        self.val = self.minimum + self.range * self.base ** -self.i * np.cos(np.pi * self.i / self.period) ** 2
+        return self.val
+
+    def __str__(self) -> str:
+        return f"{self.val:0.2f}"
 
 
 class Dqn(tella.ContinualRLAgent):
@@ -53,40 +79,60 @@ class Dqn(tella.ContinualRLAgent):
 
         self.states_visited = Counter()
 
-        self.replay_buffer = TransitionDatasetWithMaxCapacity(10_000)
+        self.replay_buffer = TransitionDatasetWithMaxCapacity(50_000)
         self.replay_sampler = UniformRandomBatchSampler(self.replay_buffer)
 
         self.model = network
         self.target_model = deepcopy(network)
         self.dqn_loss_fn = QLoss(self.model, self.target_model)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, weight_decay=1e-5)
 
         self.greedy_policy = NumpyToTorchConverter(ArgmaxAction(self.model))
+        self.exploration_schedule = ExplorationSchedule(
+            halflife=100_000,
+            period=5_000,
+            minimum=0.01,
+            maximum=1.0,
+        )
         self.epsilon_greedy_policy = ChooseBetween(
             lambda o: self.rng.choice(self.action_space.n, size=len(o)),
             self.greedy_policy,
-            prob_fn=Interpolate(start=1.0, end=0.01, n=10_000),
+            prob_fn=self.exploration_schedule,
             rng=self.rng,
         )
 
+        self.reward_signal_per_step = 0.01
+
         self.reward_tracker = RewardTracker()
+        self.action_tracker = ActionTracker()
         self.transition_observers = [
             self.replay_buffer,
             self.reward_tracker,
+            self.action_tracker,
             PeriodicCallbacks(
-                {
-                    Every(500, Steps): HardParameterUpdate(
+                [
+                    (Every(5000, Steps), HardParameterUpdate(
                         self.model, self.target_model
-                    ),
-                    Every(1, Steps, offset=200): self.update_model,
-                    Every(100, Steps): lambda: print(self.reward_tracker),
-                },
+                    )),
+                    (Every(1, Steps, offset=200), self.update_model),
+                    (Every(500, Steps), lambda: print(self.reward_tracker)),
+                    (Every(500, Steps), lambda: print(self.action_tracker)),
+                    (Every(500, Steps), lambda: print(f"Current epsilon: {self.exploration_schedule}")),
+                ],
             ),
         ]
 
     def update_model(self, n_iter: int = 4):
         for _ in range(n_iter):
-            batch = collate(self.replay_sampler.sample_batch(batch_size=128))
+            batch = collate(self.replay_sampler.sample_batch(batch_size=32))
+            batch = TorchBatch(
+                state=batch.state,
+                action=batch.action,
+                reward=batch.reward + self.reward_signal_per_step,
+                done=batch.done,
+                next_state=batch.next_state,
+                advantage=batch.advantage,
+            )
             loss = self.dqn_loss_fn(batch)
             self.optimizer.zero_grad()
             loss.backward()

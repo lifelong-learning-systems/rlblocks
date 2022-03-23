@@ -1,4 +1,5 @@
 import abc
+import collections
 import enum
 from typing import *
 import gym
@@ -106,6 +107,31 @@ class RewardTracker(TransitionObserver):
         )
 
 
+class ActionTracker(TransitionObserver):
+    def __init__(self) -> None:
+        super().__init__()
+        self.action_count = collections.Counter()
+        self.total_steps = 0
+        self.num_envs = None
+
+    def clear(self):
+        self.action_count.clear()
+        self.total_steps = 0
+
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
+        for t in transitions:
+            self.total_steps += 1
+            self.action_count[t.action] += 1
+
+    def __str__(self) -> str:
+        return str(
+            {
+                act: cnt / self.total_steps
+                for act, cnt in self.action_count.most_common()
+            }
+        )
+
+
 class CallFunctions(Callable[[], None]):
     def __init__(self, *fns: Callable[[], None]) -> None:
         super().__init__()
@@ -117,12 +143,12 @@ class CallFunctions(Callable[[], None]):
 
 
 class PeriodicCallbacks(TransitionObserver):
-    def __init__(self, callback_by_timer: Dict[Timer, Callable[[], None]]) -> None:
+    def __init__(self, callback_by_timer: List[Tuple[Timer, Callable[[], None]]]) -> None:
         super().__init__()
         self.callback_by_timer = callback_by_timer
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
-        for timer, callback in self.callback_by_timer.items():
+        for timer, callback in self.callback_by_timer:
             timer.receive_transitions(transitions)
             if timer.is_finished():
                 callback()

@@ -36,31 +36,31 @@ def train_stes():
         agent_factory=DqnCnn,
         curriculum_factory=LavaCrossingSteCurriculum,
         num_lifetimes=1,
-        num_parallel_envs=6,
+        num_parallel_envs=10,
         log_dir="logs",
     )
     tella.rl_experiment(
         agent_factory=DqnCnn,
         curriculum_factory=EmptyCrossingSteCurriculum,
         num_lifetimes=1,
-        num_parallel_envs=6,
+        num_parallel_envs=10,
         log_dir="logs",
     )
     tella.rl_experiment(
         agent_factory=DqnCnn,
         curriculum_factory=ObstacleCrossingSteCurriculum,
         num_lifetimes=1,
-        num_parallel_envs=6,
+        num_parallel_envs=10,
         log_dir="logs",
     )
 
 
 if __name__ == "__main__":
-    # train_stes()
+    train_stes()
     tella.rl_experiment(
         agent_factory=DqnCnn,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
-        num_parallel_envs=1,
+        num_parallel_envs=10,
         log_dir="logs",
     )
