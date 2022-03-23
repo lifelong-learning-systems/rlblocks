@@ -1,10 +1,13 @@
 import abc
 from typing import *
+import heapq
+
 import torch
 from torch.utils.data import Dataset
-from ..base import Transition, TransitionObserver, Vectorized
 import numpy as np
 import scipy
+
+from ..base import Transition, TransitionObserver, Vectorized
 
 PriorityFn = Callable[[Transition], float]
 
@@ -72,35 +75,23 @@ class OldestTransition(PriorityFn):
 
 class _TransitionDataset(Dataset[Transition]):
     def __init__(self) -> None:
-        self.next_id = 0
-        self.transition_ids = []
-        self.transition_by_id = {}
+        self.transitions = []
 
-    def add_transition(self, transition: Transition) -> int:
-        transition_id = self.next_id
-        self.next_id += 1
-
-        self.transition_ids.append(transition_id)
-        self.transition_by_id[transition_id] = transition
-
-        return transition_id
+    def add_transition(self, transition: Transition) -> None:
+        self.transitions.append(transition)
 
     def remove_transition(self, transition_id: int) -> None:
-        self.transition_ids.remove(transition_id)
-        del self.transition_by_id[transition_id]
+        self.transition_ids.pop(transition_id)
 
     def __getitem__(self, index: int) -> Transition:
         # TODO does using a priority queue that reorders items affect sampling algorithms?
-        transition_id = self.transition_ids[index]
-        return self.transition_by_id[transition_id]
+        return self.transitions[index]
 
     def __len__(self) -> int:
-        return len(self.transition_ids)
+        return len(self.transitions)
 
     def clear(self) -> None:
-        self.next_id = 0
-        self.transition_ids.clear()
-        self.transition_by_id.clear()
+        self.transitions = []
 
 
 class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
@@ -108,30 +99,39 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
         super().__init__()
         self.max_size = max_size
         self.priority_fn = drop
-        self.priority_by_id = {}
 
-    def add_transition(self, transition: Transition) -> int:
-        transition_id = super().add_transition(transition)
-        self.priority_by_id[transition_id] = self.priority_fn(transition)
-        return transition_id
+    def add_transition(self, transition: Transition) -> None:
+        if len(self.transitions) < self.max_size:
+            heapq.heappush(
+                self.transitions,
+                (
+                    -self.priority_fn(transition),  # Negative since heapq uses min
+                    transition,
+                )
+            )
+        else:
+            heapq.heappushpop(
+                self.transitions,
+                (
+                    -self.priority_fn(transition),  # Negative since heapq uses min
+                    transition,
+                )
+            )
 
     def remove_transition(self, transition_id: int) -> None:
-        del self.priority_by_id[transition_id]
-        return super().remove_transition(transition_id)
+        raise NotImplementedError  # TODO
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         for transition in transitions:
             self.add_transition(transition)
-            if len(self.transition_ids) >= self.max_size:
-                self.remove_transition(self.highest_priority_drop())
 
-    def highest_priority_drop(self) -> int:
-        # TODO use an actual priority queue (heapq package)?
-        return max(self.priority_by_id, key=self.priority_by_id.get)
+    def highest_priority_drop(self) -> None:
+        heapq.heappop(self.transitions)
 
-    def clear(self) -> None:
-        self.priority_by_id.clear()
-        return super().clear()
+    def __getitem__(self, index: int) -> Transition:
+        # TODO does using a priority queue that reorders items affect sampling algorithms?
+        priority, transition = self.transitions[index]
+        return transition
 
 
 class TransitionDatasetWithAdvantage(_TransitionDataset, TransitionObserver):
