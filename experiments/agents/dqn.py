@@ -22,6 +22,7 @@ from rlblocks import (
 )
 from rlblocks.replay.datasets import (
     TransitionDatasetWithMaxCapacity,
+    RewardBalancedOldestTransition,
     UniformRandomBatchSampler,
     collate,
     TorchBatch,
@@ -95,7 +96,10 @@ class Dqn(tella.ContinualRLAgent):
 
         self.rng = np.random.default_rng(self.rng_seed)
 
-        self.replay_buffer = TransitionDatasetWithMaxCapacity(50_000)
+        self.replay_buffer = TransitionDatasetWithMaxCapacity(
+            max_size=10_000,
+            drop=RewardBalancedOldestTransition(),
+        )
         self.replay_sampler = UniformRandomBatchSampler(self.replay_buffer)
 
         self.model = network
@@ -108,7 +112,7 @@ class Dqn(tella.ContinualRLAgent):
             halflife=50_000,
             period=5_000,
             minimum=0.0,
-            maximum=0.3,
+            maximum=1.0,
         )
         self.epsilon_greedy_policy = ChooseBetween(
             lambda o: self.rng.choice(self.action_space.n, size=len(o)),
@@ -128,7 +132,7 @@ class Dqn(tella.ContinualRLAgent):
             self.action_tracker,
             PeriodicCallbacks(
                 [
-                    (Every(500, Steps), HardParameterUpdate(
+                    (Every(1500, Steps), HardParameterUpdate(
                         self.model, self.target_model
                     )),
                     (Every(1, Steps, offset=200), self.update_model),
@@ -137,14 +141,16 @@ class Dqn(tella.ContinualRLAgent):
                         f"\n{self.action_tracker}"
                         f"\nCurrent epsilon: {self.exploration_schedule}"
                         f"\n{self.loss_tracker}"
+                        f"\nBuffer avg. reward = {self.replay_buffer.avg_reward()}"
+                        f"\nBuffer info: {self.replay_buffer.priority_fn}"
                     )),
                 ],
             ),
         ]
 
-    def update_model(self, n_iter: int = 4):
+    def update_model(self, n_iter: int = 10):
         for _ in range(n_iter):
-            batch = collate(self.replay_sampler.sample_batch(batch_size=128))
+            batch = collate(self.replay_sampler.sample_batch(batch_size=32))
             batch = TorchBatch(
                 state=batch.state,
                 action=batch.action,

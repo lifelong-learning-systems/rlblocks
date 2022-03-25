@@ -11,12 +11,12 @@ from tella.curriculum import (
     simple_learn_block,
 )
 from gym_minigrid.envs import CrossingEnv, EmptyEnv
-from gym_minigrid.wrappers import ImgObsWrapper, ViewSizeWrapper
+from gym_minigrid.wrappers import ImgObsWrapper
 from tella._curriculums.minigrid.m21 import MiniGridReducedActionSpaceWrapper
 from tella._curriculums.minigrid.envs import CustomDynamicObstaclesEnv
 
 
-GRID_SIZE = 5
+GRID_SIZE = 7
 
 
 class LavaCrossing(CrossingEnv):
@@ -31,13 +31,12 @@ class Empty(EmptyEnv):
 
 class ObstacleCrossing(CustomDynamicObstaclesEnv):
     def __init__(self):
-        super().__init__(size=GRID_SIZE, n_obstacles=1)
+        super().__init__(size=GRID_SIZE, n_obstacles=2)
 
 
 class StandardizedMiniGridWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env) -> None:
         super().__init__(env)
-        self.env = ViewSizeWrapper(self.env, agent_view_size=5)
         self.env = ImgObsWrapper(self.env)
         self.env = MiniGridReducedActionSpaceWrapper(self.env, num_actions=3)
         self.env.max_steps = 4 * self.env.width * self.env.height

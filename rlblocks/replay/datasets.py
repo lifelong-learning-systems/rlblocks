@@ -1,4 +1,5 @@
 import abc
+import collections
 from typing import *
 import heapq
 
@@ -45,22 +46,22 @@ def collate(transitions: List[Transition]) -> TorchBatch:
 
 class TransitionWithMaxReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return transition.reward
+        return -transition.reward
 
 
 class TransitionWithMinReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return -transition.reward
+        return transition.reward
 
 
 class TransitionWithMaxAbsReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return abs(transition.reward)
+        return -abs(transition.reward)
 
 
 class TransitionWithMinAbsReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return -abs(transition.reward)
+        return abs(transition.reward)
 
 
 class OldestTransition(PriorityFn):
@@ -68,9 +69,39 @@ class OldestTransition(PriorityFn):
         self.t = 0
 
     def __call__(self, _transition: Transition) -> float:
-        priority = -self.t
+        priority = self.t
         self.t += 1
         return priority
+
+
+class RewardBalancedOldestTransition(PriorityFn):
+    # This is only valid for environments with relatively few possible rewards.
+    #   Otherwise, will need to bin the rewards here.
+    def __init__(self) -> None:
+        self.counts = collections.Counter()
+        self.removed = collections.Counter()
+        self.total_counts = 0
+        self.n_calls = 0
+
+    def __call__(self, _transition: Transition) -> Tuple[float, int]:
+        self.n_calls += 1
+        self.total_counts += 1
+        key = _transition.reward
+        self.counts[key] += 1
+        priority = 1 - self.counts[key] / self.total_counts
+        return priority, self.n_calls
+
+    def remove_record(self, _transition: Transition) -> None:
+        self.total_counts -= 1
+        key = _transition.reward
+        self.counts[key] -= 1
+        self.removed[key] += 1
+
+    def __str__(self):
+        return (
+            f"Contents: {self.counts.most_common()}. "
+            f"Removed: {self.removed.most_common()}"
+        )
 
 
 class _TransitionDataset(Dataset[Transition]):
@@ -90,6 +121,9 @@ class _TransitionDataset(Dataset[Transition]):
     def __len__(self) -> int:
         return len(self.transitions)
 
+    def avg_reward(self):
+        return sum(t.reward for t in self.transitions) / len(self)
+
     def clear(self) -> None:
         self.transitions = []
 
@@ -105,33 +139,34 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
             heapq.heappush(
                 self.transitions,
                 (
-                    -self.priority_fn(transition),  # Negative since heapq uses min
+                    self.priority_fn(transition),
                     transition,
                 )
             )
         else:
-            heapq.heappushpop(
+            p, t = heapq.heappushpop(
                 self.transitions,
                 (
-                    -self.priority_fn(transition),  # Negative since heapq uses min
+                    self.priority_fn(transition),
                     transition,
                 )
             )
 
-    def remove_transition(self, transition_id: int) -> None:
-        raise NotImplementedError  # TODO
+            # TODO: better way to optionally call this method? Abstract class for Priority Function?
+            if hasattr(self.priority_fn, "remove_record"):
+                self.priority_fn.remove_record(t)
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         for transition in transitions:
             self.add_transition(transition)
 
-    def highest_priority_drop(self) -> None:
-        heapq.heappop(self.transitions)
-
     def __getitem__(self, index: int) -> Transition:
         # TODO does using a priority queue that reorders items affect sampling algorithms?
         priority, transition = self.transitions[index]
         return transition
+
+    def avg_reward(self):
+        return sum(t.reward for p, t in self.transitions) / len(self)
 
 
 class TransitionDatasetWithAdvantage(_TransitionDataset, TransitionObserver):
