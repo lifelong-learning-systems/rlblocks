@@ -12,12 +12,12 @@ from rlblocks import (
     Interpolate,
     NumpyToTorchConverter,
     RewardTracker,
-    ActionTracker,
     Every,
     Steps,
     HardParameterUpdate,
     PeriodicCallbacks,
     QLoss,
+    ElasticWeightConsolidationLoss,
 )
 from rlblocks.replay.datasets import (
     TransitionDatasetWithMaxCapacity,
@@ -71,11 +71,9 @@ class Dqn(tella.ContinualRLAgent):
         self.reward_signal_per_step = 0.01
 
         self.reward_tracker = RewardTracker()
-        self.action_tracker = ActionTracker()
         self.transition_observers = [
             self.replay_buffer,
             self.reward_tracker,
-            self.action_tracker,
             PeriodicCallbacks(
                 [
                     (Every(100, Steps), HardParameterUpdate(
@@ -130,8 +128,63 @@ def dqn_with_memory(model: nn.Module):
     ...
 
 
-def dqn_with_ewc(model: nn.Module):
-    ...
+class DqnEwc(Dqn):
+    def __init__(
+        self,
+        network: nn.Module,
+        rng_seed: int,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        num_envs: int,
+        config_file: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(
+            network,
+            rng_seed,
+            observation_space,
+            action_space,
+            num_envs,
+            config_file,
+        )
+        self.ewc_loss = ElasticWeightConsolidationLoss(self.model, ewc_lambda=1.0)  # TODO: tune
+
+    def update_model(self, n_iter: int = 4):
+        for _ in range(n_iter):
+            batch = collate(self.replay_sampler.sample_batch(batch_size=64))
+            batch = TorchBatch(
+                state=batch.state,
+                action=batch.action,
+                reward=batch.reward + self.reward_signal_per_step,
+                done=batch.done,
+                next_state=batch.next_state,
+                advantage=batch.advantage,
+            )
+            loss = self.dqn_loss_fn(batch) + self.ewc_loss()
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+    def task_variant_start(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        if self.is_learning_allowed:
+            print(f"Starting learning on {task_name} - {variant_name} (removing associated EWC weights)")
+            self.ewc_loss.remove_anchors(key=(task_name, variant_name))
+
+    def task_variant_end(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        if self.is_learning_allowed:
+            print(f"Finished learning on {task_name} - {variant_name} (adding associated EWC weights)")
+            batch = collate([self.replay_buffer[len(self.replay_buffer) - 1 - ii] for ii in range(128)])
+            self.optimizer.zero_grad()
+            loss_value = self.dqn_loss_fn(batch)
+            loss_value.backward()  # Gradients now accessible as an attribute of each parameter
+            self.ewc_loss.add_anchors(key=(task_name, variant_name))
 
 
 def dqn_with_memory_and_ewc(model: nn.Module):

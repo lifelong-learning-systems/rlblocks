@@ -124,8 +124,8 @@ class MiniGridCrossing(InterleavedEvalCurriculum):
     NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
-        for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
-            for cls in TASKS:
+        for cls in TASKS:
+            for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
                 yield simple_learn_block(
                     [
                         TaskVariant(

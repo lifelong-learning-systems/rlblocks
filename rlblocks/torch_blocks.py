@@ -1,4 +1,5 @@
 import itertools
+import typing
 from typing import *
 import torch
 from torch import nn
@@ -183,23 +184,19 @@ class ElasticWeightConsolidationLoss:
         self.ewc_lambda = ewc_lambda
 
         # Start with no anchors
-        self._anchor_values = []
-        self._importance = []
+        self._anchors = {}
 
     def __call__(
         self,
-    ) -> torch.Tensor:  # This does not fit the same Callable template as above
-        if not self._anchor_values:
+    ) -> torch.Tensor:
+        if not self._anchors:
             return 0
 
         loss = (
             sum(
-                (((val - anc) ** 2) * imp).sum()
-                for val, anc, imp in zip(
-                    itertools.cycle(self._model.parameters()),
-                    self._anchor_values,
-                    self._importance,
-                )
+                (((val - anc) ** 2) * anc).sum()
+                for anchors in self._anchors.values()
+                for val, anc, imp in zip(self._model.parameters(), *anchors)
             )
             * self.ewc_lambda
             / 2
@@ -207,7 +204,7 @@ class ElasticWeightConsolidationLoss:
 
         return loss
 
-    def add_anchors(self):
+    def add_anchors(self, key: typing.Hashable):
         # Importance here is computed from parameter gradients
         # Before calling this method, the user must compute those gradients using something like:
         #   `loss_fn(batch_data).backward()`
@@ -220,10 +217,13 @@ class ElasticWeightConsolidationLoss:
 
         # This is the per-task version of EWC. The online alternative replaces
         # these values (with optional relaxation) instead of extending them
-        self._anchor_values.extend(
-            [layer.detach().clone() for layer in self._model.parameters()]
+        self._anchors[key] = (
+            [layer.detach().clone() for layer in self._model.parameters()],
+            importance,
         )
-        self._importance.extend(importance)
+
+    def remove_anchors(self, key: typing.Hashable):
+        self._anchors.pop(key, None)
 
 
 class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
