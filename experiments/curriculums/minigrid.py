@@ -32,7 +32,7 @@ class Empty(EmptyEnv):
 
 class ObstacleCrossing(CustomDynamicObstaclesEnv):
     def __init__(self):
-        super().__init__(size=GRID_SIZE, n_obstacles=2)
+        super().__init__(size=GRID_SIZE, n_obstacles=1)
 
 
 class MiniGridCenteredFullyObsWrapper(gym.core.ObservationWrapper):
@@ -65,7 +65,13 @@ class MiniGridCenteredFullyObsWrapper(gym.core.ObservationWrapper):
         x = (a + 1) // 2 - env.agent_pos[0] - 1
         y = (b + 1) // 2 - env.agent_pos[1] - 1
         centered_grid[x:x+env.width, y:y+env.height] = full_grid
-        centered_grid = np.rot90(centered_grid, k=env.agent_dir, axes=(0, 1))
+        centered_grid = np.rot90(centered_grid, k=-env.agent_dir, axes=(0, 1))
+
+        # Verify that the rotation is correct:
+        front_cell = env.grid.get(*env.front_pos)
+        front_idx = centered_grid[(env.width + 1) // 2 + 1, (env.height + 1) // 2, 0]
+        front_type = gym_minigrid.envs.IDX_TO_OBJECT[front_idx]
+        assert front_type == ("empty" if front_cell is None else front_cell.type)
 
         return {
             'mission': obs['mission'],
@@ -115,7 +121,7 @@ TASKS = [
 class MiniGridCrossing(InterleavedEvalCurriculum):
     NUM_LEARN_STEPS_PER_VARIANT = 100_000
     NUM_EVAL_EPISODES_PER_VARIANT = 100
-    NUM_LOOPS_THROUGH_TASKS = 2
+    NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
@@ -151,7 +157,7 @@ tella.curriculum.curriculum_registry["MiniGridCrossing"] = MiniGridCrossing
 
 class LavaCrossingSteCurriculum(MiniGridCrossing):
     NUM_LEARN_STEPS_PER_VARIANT = 100_000
-    NUM_LOOPS_THROUGH_TASKS = 2
+    NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
@@ -170,7 +176,7 @@ class LavaCrossingSteCurriculum(MiniGridCrossing):
 
 class EmptyCrossingSteCurriculum(MiniGridCrossing):
     NUM_LEARN_STEPS_PER_VARIANT = 100_000
-    NUM_LOOPS_THROUGH_TASKS = 2
+    NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
@@ -189,7 +195,7 @@ class EmptyCrossingSteCurriculum(MiniGridCrossing):
 
 class ObstacleCrossingSteCurriculum(MiniGridCrossing):
     NUM_LEARN_STEPS_PER_VARIANT = 100_000
-    NUM_LOOPS_THROUGH_TASKS = 2
+    NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):

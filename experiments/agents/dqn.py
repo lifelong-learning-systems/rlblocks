@@ -1,4 +1,3 @@
-import collections
 from copy import deepcopy
 import typing
 
@@ -22,56 +21,10 @@ from rlblocks import (
 )
 from rlblocks.replay.datasets import (
     TransitionDatasetWithMaxCapacity,
-    RewardBalancedOldestTransition,
     UniformRandomBatchSampler,
     collate,
     TorchBatch,
 )
-
-
-class LossTracker:
-    def __init__(self, window: int = 100):
-        self.n = 0
-        self.total = 0
-        self.hist = collections.deque(maxlen=window)
-
-    def record(self, loss_value):
-        self.n += 1
-        self.total += loss_value
-        self.hist.append(loss_value)
-
-    def __str__(self) -> str:
-        return (
-            f"Avg. loss = {self.total / self.n:0.4f} "
-            f"(over last {len(self.hist)}, avg. = {sum(self.hist) / len(self.hist):0.4f})"
-        )
-
-
-class ExplorationSchedule(typing.Callable[[], float]):
-    def __init__(self, halflife: float, period: float, maximum: float = 1., minimum: float = 0.) -> None:
-        self.halflife = halflife
-        self.base = 2 ** (1 / halflife)
-
-        self.period = period
-
-        # assert 0 <= minimum < maximum <= 1
-        self.maximum = maximum
-        self.minimum = minimum
-        self.range = maximum - minimum
-
-        self.i = 0
-        self.val = None
-
-    def __call__(self) -> float:
-        self.i += 1
-        self.val = self.minimum + self.range * self.base ** -self.i * np.cos(np.pi * self.i / self.period) ** 2
-        return self.val
-
-    def __str__(self) -> str:
-        return f"{self.val:0.2f}"
-
-    def reset(self):
-        self.i = 0
 
 
 class Dqn(tella.ContinualRLAgent):
@@ -99,33 +52,23 @@ class Dqn(tella.ContinualRLAgent):
 
         self.rng = np.random.default_rng(self.rng_seed)
 
-        self.replay_buffer = TransitionDatasetWithMaxCapacity(
-            max_size=10_000,
-            drop=RewardBalancedOldestTransition(),
-        )
+        self.replay_buffer = TransitionDatasetWithMaxCapacity(max_size=10_000)
         self.replay_sampler = UniformRandomBatchSampler(self.replay_buffer)
 
         self.model = network
         self.target_model = deepcopy(network)
-        self.dqn_loss_fn = QLoss(self.model, self.target_model, discount=0.9)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2, weight_decay=1e-5)
+        self.dqn_loss_fn = QLoss(self.model, self.target_model)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2)
 
         self.greedy_policy = NumpyToTorchConverter(ArgmaxAction(self.model))
-        self.exploration_schedule = ExplorationSchedule(
-            halflife=50_000,
-            period=5_000,
-            minimum=-1.0,  # Any negative value is equivalent to 0% exploration
-            maximum=1.0,
-        )
         self.epsilon_greedy_policy = ChooseBetween(
             lambda o: self.rng.choice(self.action_space.n, size=len(o)),
             self.greedy_policy,
-            prob_fn=self.exploration_schedule,
+            prob_fn=Interpolate(start=1.0, end=0.02, n=10_000),
             rng=self.rng,
         )
 
         self.reward_signal_per_step = 0.01
-        self.loss_tracker = LossTracker()
 
         self.reward_tracker = RewardTracker()
         self.action_tracker = ActionTracker()
@@ -135,25 +78,18 @@ class Dqn(tella.ContinualRLAgent):
             self.action_tracker,
             PeriodicCallbacks(
                 [
-                    (Every(1500, Steps), HardParameterUpdate(
+                    (Every(100, Steps), HardParameterUpdate(
                         self.model, self.target_model
                     )),
                     (Every(1, Steps, offset=200), self.update_model),
-                    (Every(500, Steps), lambda: print(
-                        f"\n{self.reward_tracker}"
-                        f"\n{self.action_tracker}"
-                        f"\nCurrent epsilon: {self.exploration_schedule}"
-                        f"\n{self.loss_tracker}"
-                        f"\nBuffer avg. reward = {self.replay_buffer.avg_reward()}"
-                        f"\nBuffer info: {self.replay_buffer.priority_fn}"
-                    )),
+                    (Every(500, Steps), lambda: print(self.reward_tracker)),
                 ],
             ),
         ]
 
-    def update_model(self, n_iter: int = 10):
+    def update_model(self, n_iter: int = 4):
         for _ in range(n_iter):
-            batch = collate(self.replay_sampler.sample_batch(batch_size=16))
+            batch = collate(self.replay_sampler.sample_batch(batch_size=64))
             batch = TorchBatch(
                 state=batch.state,
                 action=batch.action,
@@ -166,8 +102,6 @@ class Dqn(tella.ContinualRLAgent):
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-
-            self.loss_tracker.record(loss.item())
 
     def choose_actions(
         self, observations: typing.List[typing.Optional[tella.Observation]]
@@ -190,12 +124,6 @@ class Dqn(tella.ContinualRLAgent):
             masked_transitions = [t for t in transitions if t is not None]
             for observer in self.transition_observers:
                 observer.receive_transitions(masked_transitions)
-
-    def task_start(
-        self,
-        task_name: typing.Optional[str],
-    ) -> None:
-        self.exploration_schedule.reset()
 
 
 def dqn_with_memory(model: nn.Module):
