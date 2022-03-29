@@ -1,5 +1,6 @@
 import typing
 import gym
+import gym_minigrid.minigrid
 import numpy as np
 import tella
 from tella.curriculum import (
@@ -16,7 +17,7 @@ from tella._curriculums.minigrid.m21 import MiniGridReducedActionSpaceWrapper
 from tella._curriculums.minigrid.envs import CustomDynamicObstaclesEnv
 
 
-GRID_SIZE = 7
+GRID_SIZE = 5
 
 
 class LavaCrossing(CrossingEnv):
@@ -34,9 +35,48 @@ class ObstacleCrossing(CustomDynamicObstaclesEnv):
         super().__init__(size=GRID_SIZE, n_obstacles=2)
 
 
+class MiniGridCenteredFullyObsWrapper(gym.core.ObservationWrapper):
+    """
+    Fully observable gridworld using a compact grid encoding, centered on agent
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+
+        self.observation_space.spaces["image"] = gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.env.width * 2 - 3, self.env.height * 2 - 3, 3),  # number of cells
+            dtype='uint8'
+        )
+
+    def observation(self, obs):
+        env = self.unwrapped
+        full_grid = env.grid.encode()
+        full_grid[env.agent_pos[0]][env.agent_pos[1]] = np.array([
+            gym_minigrid.minigrid.OBJECT_TO_IDX['agent'],
+            gym_minigrid.minigrid.COLOR_TO_IDX['red'],
+            env.agent_dir
+        ])
+
+        # Add to FullyObsWrapper: rotate and center obs on agent
+        a, b, c = self.observation_space.spaces["image"].shape
+        centered_grid = np.zeros((a, b, c), dtype=np.uint8)
+        x = (a + 1) // 2 - env.agent_pos[0] - 1
+        y = (b + 1) // 2 - env.agent_pos[1] - 1
+        centered_grid[x:x+env.width, y:y+env.height] = full_grid
+        centered_grid = np.rot90(centered_grid, k=env.agent_dir, axes=(0, 1))
+
+        return {
+            'mission': obs['mission'],
+            'image': centered_grid
+        }
+
+
 class StandardizedMiniGridWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env) -> None:
         super().__init__(env)
+        self.env = MiniGridCenteredFullyObsWrapper(self.env)
         self.env = ImgObsWrapper(self.env)
         self.env = MiniGridReducedActionSpaceWrapper(self.env, num_actions=3)
         self.env.max_steps = 4 * self.env.width * self.env.height
@@ -73,7 +113,7 @@ TASKS = [
 
 
 class MiniGridCrossing(InterleavedEvalCurriculum):
-    NUM_LEARN_STEPS_PER_VARIANT = 50_000
+    NUM_LEARN_STEPS_PER_VARIANT = 100_000
     NUM_EVAL_EPISODES_PER_VARIANT = 100
     NUM_LOOPS_THROUGH_TASKS = 2
 

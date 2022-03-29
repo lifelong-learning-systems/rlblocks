@@ -36,19 +36,32 @@ class MiniGridObjectIndexToOneHot(nn.Module):
         return tnnf.one_hot(x[..., 0].type(torch.int64), num_classes=11).permute(0, 3, 1, 2).type(torch.float32)
 
 
+class MiniGridCenteredFullObsIndexToOneHot(nn.Module):
+    """
+    "Full" observations in MiniGrid are NxNx3, describing a NxN grid of cells
+    in 3 channels: object index [0,10], color index [0,5], and state index [0,3].
+    This layer converts the objects to one-hot encodings. It also permutes the result
+    to the expected channels-first format.
+    """
+    def forward(self, x):
+        return torch.cat([
+            tnnf.one_hot(x[..., 0].type(torch.int64), num_classes=11),
+        ], dim=-1).permute(0, 3, 1, 2).type(torch.float32)
+
+
 # CNN network for minigrid
 def make_cnn() -> nn.Module:
     return nn.Sequential(
-        MiniGridObjectIndexToOneHot(),
-        # nn.Conv2d(11, 5, (1, 1)),  # 7x7x11 -> 7x7x5
-        # nn.Tanh(),
+        MiniGridCenteredFullObsIndexToOneHot(),
+        nn.Conv2d(11, 32, (3, 3)),  # 7x7x11 -> 5x5x32
+        nn.Tanh(),
+        nn.Conv2d(32, 64, (3, 3)),  # 5x5x32 -> 3x3x64
+        nn.Tanh(),
+        nn.Conv2d(64, 128, (3, 3)),  # 3x3x64 -> 1x1x128
+        nn.Tanh(),
         nn.Flatten(),
-        nn.Linear(7*7*11, 256),
+        nn.Linear(128, 32),
         nn.Tanh(),
-        nn.Linear(256, 128),
-        nn.Tanh(),
-        nn.Linear(128, 64),
-        nn.Tanh(),
-        nn.Linear(64, 3),
+        nn.Linear(32, 3),
         # nn.Sigmoid(),  # Assuming Q values in [0, 1]
     )

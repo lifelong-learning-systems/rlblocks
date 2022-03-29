@@ -54,7 +54,7 @@ class ExplorationSchedule(typing.Callable[[], float]):
 
         self.period = period
 
-        assert 0 <= minimum < maximum <= 1
+        # assert 0 <= minimum < maximum <= 1
         self.maximum = maximum
         self.minimum = minimum
         self.range = maximum - minimum
@@ -69,6 +69,9 @@ class ExplorationSchedule(typing.Callable[[], float]):
 
     def __str__(self) -> str:
         return f"{self.val:0.2f}"
+
+    def reset(self):
+        self.i = 0
 
 
 class Dqn(tella.ContinualRLAgent):
@@ -104,14 +107,14 @@ class Dqn(tella.ContinualRLAgent):
 
         self.model = network
         self.target_model = deepcopy(network)
-        self.dqn_loss_fn = QLoss(self.model, self.target_model, discount=0.8)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, weight_decay=1e-5)
+        self.dqn_loss_fn = QLoss(self.model, self.target_model, discount=0.9)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-2, weight_decay=1e-5)
 
         self.greedy_policy = NumpyToTorchConverter(ArgmaxAction(self.model))
         self.exploration_schedule = ExplorationSchedule(
             halflife=50_000,
             period=5_000,
-            minimum=0.0,
+            minimum=-1.0,  # Any negative value is equivalent to 0% exploration
             maximum=1.0,
         )
         self.epsilon_greedy_policy = ChooseBetween(
@@ -150,7 +153,7 @@ class Dqn(tella.ContinualRLAgent):
 
     def update_model(self, n_iter: int = 10):
         for _ in range(n_iter):
-            batch = collate(self.replay_sampler.sample_batch(batch_size=32))
+            batch = collate(self.replay_sampler.sample_batch(batch_size=16))
             batch = TorchBatch(
                 state=batch.state,
                 action=batch.action,
@@ -187,6 +190,12 @@ class Dqn(tella.ContinualRLAgent):
             masked_transitions = [t for t in transitions if t is not None]
             for observer in self.transition_observers:
                 observer.receive_transitions(masked_transitions)
+
+    def task_start(
+        self,
+        task_name: typing.Optional[str],
+    ) -> None:
+        self.exploration_schedule.reset()
 
 
 def dqn_with_memory(model: nn.Module):
