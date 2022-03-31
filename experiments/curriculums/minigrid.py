@@ -46,25 +46,31 @@ class MiniGridCenteredFullyObsWrapper(gym.core.ObservationWrapper):
         self.observation_space.spaces["image"] = gym.spaces.Box(
             low=0,
             high=255,
-            shape=(self.env.width * 2 - 3, self.env.height * 2 - 3, 3),  # number of cells
-            dtype='uint8'
+            shape=(
+                self.env.width * 2 - 3,
+                self.env.height * 2 - 3,
+                3,
+            ),  # number of cells
+            dtype="uint8",
         )
 
     def observation(self, obs):
         env = self.unwrapped
         full_grid = env.grid.encode()
-        full_grid[env.agent_pos[0]][env.agent_pos[1]] = np.array([
-            gym_minigrid.minigrid.OBJECT_TO_IDX['agent'],
-            gym_minigrid.minigrid.COLOR_TO_IDX['red'],
-            env.agent_dir
-        ])
+        full_grid[env.agent_pos[0]][env.agent_pos[1]] = np.array(
+            [
+                gym_minigrid.minigrid.OBJECT_TO_IDX["agent"],
+                gym_minigrid.minigrid.COLOR_TO_IDX["red"],
+                env.agent_dir,
+            ]
+        )
 
         # Add to FullyObsWrapper: rotate and center obs on agent
         a, b, c = self.observation_space.spaces["image"].shape
         centered_grid = np.zeros((a, b, c), dtype=np.uint8)
         x = (a + 1) // 2 - env.agent_pos[0] - 1
         y = (b + 1) // 2 - env.agent_pos[1] - 1
-        centered_grid[x:x+env.width, y:y+env.height] = full_grid
+        centered_grid[x : x + env.width, y : y + env.height] = full_grid
         centered_grid = np.rot90(centered_grid, k=-env.agent_dir, axes=(0, 1))
 
         # Verify that the rotation is correct:
@@ -73,10 +79,7 @@ class MiniGridCenteredFullyObsWrapper(gym.core.ObservationWrapper):
         front_type = gym_minigrid.envs.IDX_TO_OBJECT[front_idx]
         assert front_type == ("empty" if front_cell is None else front_cell.type)
 
-        return {
-            'mission': obs['mission'],
-            'image': centered_grid
-        }
+        return {"mission": obs["mission"], "image": centered_grid}
 
 
 class StandardizedMiniGridWrapper(gym.Wrapper):
@@ -119,13 +122,13 @@ TASKS = [
 
 
 class MiniGridCrossing(InterleavedEvalCurriculum):
-    NUM_LEARN_STEPS_PER_VARIANT = 100_000
+    NUM_LEARN_STEPS_PER_VARIANT = 30_000
     NUM_EVAL_EPISODES_PER_VARIANT = 100
     NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
-        for cls in TASKS:
-            for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
+        for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
+            for cls in TASKS:
                 yield simple_learn_block(
                     [
                         TaskVariant(
@@ -156,7 +159,7 @@ tella.curriculum.curriculum_registry["MiniGridCrossing"] = MiniGridCrossing
 
 
 class LavaCrossingSteCurriculum(MiniGridCrossing):
-    NUM_LEARN_STEPS_PER_VARIANT = 100_000
+    NUM_LEARN_STEPS_PER_VARIANT = 30_000
     NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
@@ -175,7 +178,7 @@ class LavaCrossingSteCurriculum(MiniGridCrossing):
 
 
 class EmptyCrossingSteCurriculum(MiniGridCrossing):
-    NUM_LEARN_STEPS_PER_VARIANT = 100_000
+    NUM_LEARN_STEPS_PER_VARIANT = 30_000
     NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
@@ -194,7 +197,7 @@ class EmptyCrossingSteCurriculum(MiniGridCrossing):
 
 
 class ObstacleCrossingSteCurriculum(MiniGridCrossing):
-    NUM_LEARN_STEPS_PER_VARIANT = 100_000
+    NUM_LEARN_STEPS_PER_VARIANT = 30_000
     NUM_LOOPS_THROUGH_TASKS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:

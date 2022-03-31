@@ -194,7 +194,7 @@ class ElasticWeightConsolidationLoss:
 
         loss = (
             sum(
-                (((val - anc) ** 2) * anc).sum()
+                (((val - anc) ** 2) * imp).sum()
                 for anchors in self._anchors.values()
                 for val, anc, imp in zip(self._model.parameters(), *anchors)
             )
