@@ -92,14 +92,7 @@ class Dqn(tella.ContinualRLAgent):
     def update_model(self, n_iter: int = 4):
         for _ in range(n_iter * self.num_envs):
             batch = collate(self.replay_sampler.sample_batch(batch_size=64))
-            batch = TorchBatch(
-                state=batch.state,
-                action=batch.action,
-                reward=batch.reward + self.reward_signal_per_step,
-                done=batch.done,
-                next_state=batch.next_state,
-                advantage=batch.advantage,
-            )
+            batch.reward += self.reward_signal_per_step
             loss = self.dqn_loss_fn(batch)
             self.optimizer.zero_grad()
             loss.backward()
@@ -150,22 +143,14 @@ class DqnEwc(Dqn):
             num_envs,
             config_file,
         )
-        self.ewc_loss = ElasticWeightConsolidationLoss(
-            self.model, ewc_lambda=1.0
-        )  # TODO: tune
+        self.ewc_loss_fn = ElasticWeightConsolidationLoss(self.model)
+        self.ewc_lambda = 1e6  # NOTE: original paper used 400
 
     def update_model(self, n_iter: int = 4):
-        for _ in range(n_iter):
+        for _ in range(n_iter * self.num_envs):
             batch = collate(self.replay_sampler.sample_batch(batch_size=64))
-            batch = TorchBatch(
-                state=batch.state,
-                action=batch.action,
-                reward=batch.reward + self.reward_signal_per_step,
-                done=batch.done,
-                next_state=batch.next_state,
-                advantage=batch.advantage,
-            )
-            loss = self.dqn_loss_fn(batch) + self.ewc_loss()
+            batch.reward += self.reward_signal_per_step
+            loss = self.dqn_loss_fn(batch) + self.ewc_loss_fn() * self.ewc_lambda
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -179,7 +164,7 @@ class DqnEwc(Dqn):
             print(
                 f"Starting learning on {task_name} - {variant_name} (removing associated EWC weights)"
             )
-            self.ewc_loss.remove_anchors(key=(task_name, variant_name))
+            self.ewc_loss_fn.remove_anchors(key=(task_name, variant_name))
 
     def task_variant_end(
         self,
@@ -190,17 +175,15 @@ class DqnEwc(Dqn):
             print(
                 f"Finished learning on {task_name} - {variant_name} (adding associated EWC weights)"
             )
-            # batch = collate(
-            #     [
-            #         self.replay_buffer[len(self.replay_buffer) - 1 - ii]
-            #         for ii in range(128)
-            #     ]
-            # )
-            batch = collate(self.replay_buffer[-128:])
-            self.optimizer.zero_grad()
-            loss_value = self.dqn_loss_fn(batch)
-            loss_value.backward()  # Gradients now accessible as an attribute of each parameter
-            self.ewc_loss.add_anchors(key=(task_name, variant_name))
+            key = (task_name, variant_name)
+            self.ewc_loss_fn.set_anchors(key)
+            # NOTE: original paper only drew 100 batches to calculate this
+            for transitions in self.replay_sampler.generate_batches(128, True):
+                batch = collate(transitions)
+                self.optimizer.zero_grad()
+                # .backward() puts gradients as an attribute of each parameter
+                self.dqn_loss_fn(batch).backward()
+                self.ewc_loss_fn.sample_fisher_information(key)
 
 
 def dqn_with_memory_and_ewc(model: nn.Module):

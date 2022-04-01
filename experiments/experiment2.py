@@ -100,5 +100,5 @@ def train_dqn_ewc():
 
 if __name__ == "__main__":
     # train_stes()
-    train_dqn()
-    # train_dqn_ewc()
+    # train_dqn()
+    train_dqn_ewc()

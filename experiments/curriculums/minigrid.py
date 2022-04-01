@@ -124,7 +124,7 @@ TASKS = [
 class MiniGridCrossing(InterleavedEvalCurriculum):
     NUM_LEARN_STEPS_PER_VARIANT = 30_000
     NUM_EVAL_EPISODES_PER_VARIANT = 100
-    NUM_LOOPS_THROUGH_TASKS = 3
+    NUM_LOOPS_THROUGH_TASKS = 1
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
@@ -160,7 +160,7 @@ tella.curriculum.curriculum_registry["MiniGridCrossing"] = MiniGridCrossing
 
 class LavaCrossingSteCurriculum(MiniGridCrossing):
     NUM_LEARN_STEPS_PER_VARIANT = 30_000
-    NUM_LOOPS_THROUGH_TASKS = 3
+    NUM_LOOPS_THROUGH_TASKS = 1
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
@@ -179,7 +179,7 @@ class LavaCrossingSteCurriculum(MiniGridCrossing):
 
 class EmptyCrossingSteCurriculum(MiniGridCrossing):
     NUM_LEARN_STEPS_PER_VARIANT = 30_000
-    NUM_LOOPS_THROUGH_TASKS = 3
+    NUM_LOOPS_THROUGH_TASKS = 1
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
@@ -198,7 +198,7 @@ class EmptyCrossingSteCurriculum(MiniGridCrossing):
 
 class ObstacleCrossingSteCurriculum(MiniGridCrossing):
     NUM_LEARN_STEPS_PER_VARIANT = 30_000
-    NUM_LOOPS_THROUGH_TASKS = 3
+    NUM_LOOPS_THROUGH_TASKS = 1
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
         for _ in range(self.NUM_LOOPS_THROUGH_TASKS):

@@ -13,13 +13,22 @@ from ..base import Transition, TransitionObserver, Vectorized
 PriorityFn = Callable[[Transition], float]
 
 
-class TorchBatch(NamedTuple):
-    state: torch.FloatTensor
-    action: torch.Tensor
-    reward: torch.FloatTensor
-    done: torch.FloatTensor
-    next_state: torch.FloatTensor
-    advantage: Optional[torch.FloatTensor]
+class TorchBatch:
+    def __init__(
+        self,
+        state: torch.FloatTensor,
+        action: torch.Tensor,
+        reward: torch.FloatTensor,
+        done: torch.FloatTensor,
+        next_state: torch.FloatTensor,
+        advantage: Optional[torch.FloatTensor],
+    ):
+        self.state = state
+        self.action = action
+        self.reward = reward
+        self.done = done
+        self.next_state = next_state
+        self.advantage = advantage
 
 
 def collate(transitions: List[Transition]) -> TorchBatch:
@@ -106,20 +115,10 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
 
     def add_transition(self, transition: Transition) -> None:
         if len(self.transitions) < self.max_size:
-            heapq.heappush(
-                self.transitions,
-                (
-                    self.priority_fn(transition),
-                    transition,
-                )
-            )
+            heapq.heappush(self.transitions, (self.priority_fn(transition), transition))
         else:
             heapq.heappushpop(
-                self.transitions,
-                (
-                    self.priority_fn(transition),
-                    transition,
-                )
+                self.transitions, (self.priority_fn(transition), transition)
             )
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
@@ -127,6 +126,8 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
             self.add_transition(transition)
 
     def __getitem__(self, index: int) -> Transition:
+        if isinstance(index, slice):
+            return [t for p, t in self.transitions[index]]
         # TODO does using a priority queue that reorders items affect sampling algorithms?
         priority, transition = self.transitions[index]
         return transition
