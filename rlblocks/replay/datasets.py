@@ -2,6 +2,7 @@ import abc
 import collections
 from typing import *
 import heapq
+import math
 
 import torch
 from torch.utils.data import Dataset
@@ -120,6 +121,10 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
             heapq.heappushpop(
                 self.transitions, (self.priority_fn(transition), transition)
             )
+
+    def shrink_to_fit(self):
+        while len(self.transitions) > self.max_size:
+            heapq.heappop(self.transitions)
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         for transition in transitions:
@@ -245,20 +250,31 @@ class MetaBatchSampler(BatchSampler):
         assert sum(pcts) == 1.0
         self.samplers_and_pcts = samplers_and_pcts
 
+    def _sized(self, batch_size: int) -> List[Tuple[BatchSampler, int]]:
+        sizes = [math.floor(p * batch_size) for _, p in self.samplers_and_pcts]
+        remainder = batch_size - sum(sizes)
+        assert 0 <= remainder < len(sizes)
+        for i in range(remainder):
+            sizes[i] += 1
+        assert sum(sizes) == batch_size
+        return [
+            (sampler, sizes[i])
+            for i, (sampler, _pct) in enumerate(self.samplers_and_pcts)
+        ]
+
     def sample_batch(self, batch_size: int) -> List[Transition]:
-        # FIXME: round(p * batch_size) does not result in total amount of `batch_size`
-        assert all(round(p * batch_size) > 0 for _, p in self.samplers_and_pcts)
-        return sum(
-            (s.sample_batch(round(p * batch_size)) for s, p in self.samplers_and_pcts),
+        batch = sum(
+            (s.sample_batch(size) for s, size in self._sized(batch_size)),
             start=[],
         )
+        assert len(batch) == batch_size
+        return batch
 
     def generate_batches(self, batch_size: int, drop_last: bool) -> BatchGenerator:
-        # FIXME: round(p * batch_size) does not result in total amount of `batch_size`
-        assert all(round(p * batch_size) > 0 for _, p in self.samplers_and_pcts)
         generators = [
-            s.generate_batches(round(p * batch_size), drop_last)
-            for s, p in self.samplers_and_pcts
+            s.generate_batches(size, drop_last) for s, size in self._sized(batch_size)
         ]
         for batches in zip(*generators):
-            yield sum(batches, start=[])
+            b = sum(batches, start=[])
+            assert len(b) == batch_size
+            yield b

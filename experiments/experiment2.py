@@ -7,7 +7,7 @@ import os
 
 sys.path.append(os.path.abspath(os.curdir))
 
-from experiments.agents import Dqn, DqnEwc, make_cnn
+from experiments.agents import Dqn, DqnEwc, make_cnn, DqnTaskMemory
 from experiments.curriculums.minigrid import (
     MiniGridCrossing,
     LavaCrossingSteCurriculum,
@@ -36,6 +36,25 @@ class DqnCnn(Dqn):
 
 
 class DqnEwcCnn(DqnEwc):
+    def __init__(
+        self,
+        rng_seed: int,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        num_envs: int,
+        config_file: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(
+            make_cnn(),
+            rng_seed,
+            observation_space,
+            action_space,
+            num_envs,
+            config_file,
+        )
+
+
+class DqnTaskMemoryCnn(DqnTaskMemory):
     def __init__(
         self,
         rng_seed: int,
@@ -98,7 +117,18 @@ def train_dqn_ewc():
     )
 
 
+def train_dqn_task_memory():
+    tella.rl_experiment(
+        agent_factory=DqnTaskMemoryCnn,
+        curriculum_factory=MiniGridCrossing,
+        num_lifetimes=1,
+        num_parallel_envs=5,
+        log_dir="logs",
+    )
+
+
 if __name__ == "__main__":
     # train_stes()
     # train_dqn()
-    train_dqn_ewc()
+    # train_dqn_ewc()
+    train_dqn_task_memory()

@@ -21,6 +21,7 @@ from rlblocks import (
     ElasticWeightConsolidationLoss,
 )
 from rlblocks.replay.datasets import (
+    MetaBatchSampler,
     TransitionDatasetWithMaxCapacity,
     UniformRandomBatchSampler,
     collate,
@@ -121,10 +122,6 @@ class Dqn(tella.ContinualRLAgent):
                 observer.receive_transitions(masked_transitions)
 
 
-def dqn_with_memory(model: nn.Module):
-    ...
-
-
 class DqnEwc(Dqn):
     def __init__(
         self,
@@ -186,5 +183,40 @@ class DqnEwc(Dqn):
                 self.ewc_loss_fn.sample_fisher_information(key)
 
 
-def dqn_with_memory_and_ewc(model: nn.Module):
-    ...
+class DqnTaskMemory(Dqn):
+    def __init__(
+        self,
+        network: nn.Module,
+        rng_seed: int,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        num_envs: int,
+        config_file: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(
+            network, rng_seed, observation_space, action_space, num_envs, config_file
+        )
+        self.buffers = {}
+        self.samplers = {}
+        self.max_size = self.replay_buffer.max_size
+
+    def task_variant_start(
+        self, task_name: typing.Optional[str], variant_name: typing.Optional[str]
+    ) -> None:
+        super().task_variant_start(task_name, variant_name)
+        key = (task_name, variant_name)
+        if self.is_learning_allowed and key not in self.buffers:
+            self.buffers[key] = TransitionDatasetWithMaxCapacity(self.max_size)
+            self.samplers[key] = UniformRandomBatchSampler(self.buffers[key])
+            for k, buffer in self.buffers.items():
+                buffer.max_size = self.max_size // len(self.buffers)
+                buffer.shrink_to_fit()
+
+            self.replay_sampler = MetaBatchSampler(
+                *[
+                    (sampler, 1 / len(self.samplers))
+                    for sampler in self.samplers.values()
+                ]
+            )
+
+        self.transition_observers[0] = self.buffers[key]
