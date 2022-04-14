@@ -23,16 +23,18 @@ GRID_SIZE = 5
 class LavaCrossing(CrossingEnv):
     def __init__(self):
         super().__init__(size=GRID_SIZE, num_crossings=1)
+        assert self.grid.get(*self.agent_pos) is None
+        self.place_agent()
 
 
 class Empty(EmptyEnv):
     def __init__(self):
-        super().__init__(size=GRID_SIZE)
+        super().__init__(size=GRID_SIZE, agent_start_pos=None)
 
 
 class ObstacleCrossing(CustomDynamicObstaclesEnv):
     def __init__(self):
-        super().__init__(size=GRID_SIZE, n_obstacles=1)
+        super().__init__(size=GRID_SIZE, n_obstacles=1, agent_start_pos=None)
 
 
 class MiniGridCenteredFullyObsWrapper(gym.core.ObservationWrapper):
@@ -125,17 +127,20 @@ class MiniGridCrossing(InterleavedEvalCurriculum):
     NUM_LEARN_STEPS_PER_VARIANT = 30_000
     NUM_EVAL_EPISODES_PER_VARIANT = 100
     NUM_LOOPS_THROUGH_TASKS = 1
+    MID_TRAIN_EVALS = 3
 
     def learn_blocks(self) -> typing.Iterable[LearnBlock]:
-        for _ in range(self.NUM_LOOPS_THROUGH_TASKS):
-            for cls in TASKS:
+        assert self.NUM_LEARN_STEPS_PER_VARIANT % self.MID_TRAIN_EVALS == 0
+        steps = self.NUM_LEARN_STEPS_PER_VARIANT // self.MID_TRAIN_EVALS
+        for cls in TASKS:
+            for _ in range(self.MID_TRAIN_EVALS):
                 yield simple_learn_block(
                     [
                         TaskVariant(
                             cls,
                             task_label=cls.__name__,
                             variant_label="Default",
-                            num_steps=self.NUM_LEARN_STEPS_PER_VARIANT,
+                            num_steps=steps,
                             rng_seed=self.rng.bit_generator.random_raw(),
                         )
                     ]

@@ -130,5 +130,5 @@ def train_dqn_task_memory():
 if __name__ == "__main__":
     # train_stes()
     # train_dqn()
-    # train_dqn_ewc()
-    train_dqn_task_memory()
+    train_dqn_ewc()
+    # train_dqn_task_memory()
