@@ -141,7 +141,7 @@ class DqnEwc(Dqn):
             config_file,
         )
         self.ewc_loss_fn = ElasticWeightConsolidationLoss(self.model)
-        self.ewc_lambda = 1e6  # NOTE: original paper used 400
+        self.ewc_lambda = 1e8  # NOTE: original paper used 400
 
     def update_model(self, n_iter: int = 4):
         for _ in range(n_iter * self.num_envs):

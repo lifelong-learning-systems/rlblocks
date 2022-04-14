@@ -192,7 +192,7 @@ class ElasticWeightConsolidationLoss:
         for key, anchors in self._anchors.items():
             for name, curr_param in self._model.named_parameters():
                 f = self._fisher_information[key][name] / self._num_samples[key]
-                loss += f * (anchors[name] - curr_param).square().sum()
+                loss += (f * (anchors[name] - curr_param).square()).sum()
         return 0.5 * loss
 
     def set_anchors(self, key: typing.Hashable):
