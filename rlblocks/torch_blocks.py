@@ -191,7 +191,7 @@ class ElasticWeightConsolidationLoss:
         loss = 0
         for key, anchors in self._anchors.items():
             for name, curr_param in self._model.named_parameters():
-                f = self._fisher_information[key] / self._num_samples[key]
+                f = self._fisher_information[key][name] / self._num_samples[key]
                 loss += f * (anchors[name] - curr_param).square().sum()
         return 0.5 * loss
 
