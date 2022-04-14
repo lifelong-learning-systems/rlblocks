@@ -1,4 +1,5 @@
 import itertools
+import typing
 from typing import *
 import torch
 from torch import nn
@@ -178,52 +179,48 @@ class TDActionValueLoss(Callable[[TorchBatch], torch.Tensor]):
 
 
 class ElasticWeightConsolidationLoss:
-    def __init__(self, model: nn.Module, ewc_lambda: float):
+    def __init__(self, model: nn.Module):
         self._model = model
-        self.ewc_lambda = ewc_lambda
 
         # Start with no anchors
-        self._anchor_values = []
-        self._importance = []
+        self._anchors = {}
+        self._fisher_information = {}
+        self._num_samples = {}
 
-    def __call__(
-        self,
-    ) -> torch.Tensor:  # This does not fit the same Callable template as above
-        if not self._anchor_values:
-            return 0
+    def __call__(self) -> torch.Tensor:
+        loss = 0
+        for key, anchors in self._anchors.items():
+            for name, curr_param in self._model.named_parameters():
+                f = self._fisher_information[key][name] / self._num_samples[key]
+                loss += (f * (anchors[name] - curr_param).square()).sum()
+        return 0.5 * loss
 
-        loss = (
-            sum(
-                (((val - anc) ** 2) * imp).sum()
-                for val, anc, imp in zip(
-                    itertools.cycle(self._model.parameters()),
-                    self._anchor_values,
-                    self._importance,
-                )
-            )
-            * self.ewc_lambda
-            / 2
-        )
+    def set_anchors(self, key: typing.Hashable):
+        # This is the per-task version of EWC. The online alternative replaces
+        # these values (with optional relaxation) instead of extending them
+        self._anchors[key] = {
+            name: layer.data.clone() for name, layer in self._model.named_parameters()
+        }
 
-        return loss
-
-    def add_anchors(self):
+    def sample_fisher_information(self, key: typing.Hashable):
         # Importance here is computed from parameter gradients
         # Before calling this method, the user must compute those gradients using something like:
         #   `loss_fn(batch_data).backward()`
-        importance = [
-            layer.grad.detach().clone() ** 2
-            if layer.grad is not None
-            else torch.zeros_like(layer)
-            for layer in self._model.parameters()
-        ]
+        f_sample = {
+            name: layer.grad.data.clone().square()
+            for name, layer in self._model.named_parameters()
+        }
+        if key not in self._fisher_information:
+            self._fisher_information[key] = f_sample
+            self._num_samples[key] = 0
+        else:
+            self._num_samples[key] += 1
+            for name, value in f_sample.items():
+                self._fisher_information[key][name] += value
 
-        # This is the per-task version of EWC. The online alternative replaces
-        # these values (with optional relaxation) instead of extending them
-        self._anchor_values.extend(
-            [layer.detach().clone() for layer in self._model.parameters()]
-        )
-        self._importance.extend(importance)
+    def remove_anchors(self, key: typing.Hashable):
+        self._anchors.pop(key, None)
+        self._fisher_information.pop(key, None)
 
 
 class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):

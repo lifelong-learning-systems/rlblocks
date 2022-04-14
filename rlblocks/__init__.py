@@ -12,6 +12,7 @@ from rlblocks.base import (
     Duration,
     Every,
     RewardTracker,
+    ActionTracker,
     PeriodicCallbacks,
     run_env_interaction,
     CallFunctions,

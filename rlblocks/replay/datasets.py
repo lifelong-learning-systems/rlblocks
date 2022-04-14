@@ -1,21 +1,35 @@
 import abc
+import collections
 from typing import *
+import heapq
+import math
+
 import torch
 from torch.utils.data import Dataset
-from ..base import Transition, TransitionObserver, Vectorized
 import numpy as np
 import scipy
+
+from ..base import Transition, TransitionObserver, Vectorized
 
 PriorityFn = Callable[[Transition], float]
 
 
-class TorchBatch(NamedTuple):
-    state: torch.FloatTensor
-    action: torch.Tensor
-    reward: torch.FloatTensor
-    done: torch.FloatTensor
-    next_state: torch.FloatTensor
-    advantage: Optional[torch.FloatTensor]
+class TorchBatch:
+    def __init__(
+        self,
+        state: torch.FloatTensor,
+        action: torch.Tensor,
+        reward: torch.FloatTensor,
+        done: torch.FloatTensor,
+        next_state: torch.FloatTensor,
+        advantage: Optional[torch.FloatTensor],
+    ):
+        self.state = state
+        self.action = action
+        self.reward = reward
+        self.done = done
+        self.next_state = next_state
+        self.advantage = advantage
 
 
 def collate(transitions: List[Transition]) -> TorchBatch:
@@ -42,22 +56,22 @@ def collate(transitions: List[Transition]) -> TorchBatch:
 
 class TransitionWithMaxReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return transition.reward
+        return -transition.reward
 
 
 class TransitionWithMinReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return -transition.reward
+        return transition.reward
 
 
 class TransitionWithMaxAbsReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return abs(transition.reward)
+        return -abs(transition.reward)
 
 
 class TransitionWithMinAbsReward(PriorityFn):
     def __call__(self, transition: Transition) -> float:
-        return -abs(transition.reward)
+        return abs(transition.reward)
 
 
 class OldestTransition(PriorityFn):
@@ -65,42 +79,33 @@ class OldestTransition(PriorityFn):
         self.t = 0
 
     def __call__(self, _transition: Transition) -> float:
-        priority = -self.t
+        priority = self.t
         self.t += 1
         return priority
 
 
 class _TransitionDataset(Dataset[Transition]):
     def __init__(self) -> None:
-        self.next_id = 0
-        self.transition_ids = []
-        self.transition_by_id = {}
+        self.transitions = []
 
-    def add_transition(self, transition: Transition) -> int:
-        transition_id = self.next_id
-        self.next_id += 1
-
-        self.transition_ids.append(transition_id)
-        self.transition_by_id[transition_id] = transition
-
-        return transition_id
+    def add_transition(self, transition: Transition) -> None:
+        self.transitions.append(transition)
 
     def remove_transition(self, transition_id: int) -> None:
-        self.transition_ids.remove(transition_id)
-        del self.transition_by_id[transition_id]
+        self.transition_ids.pop(transition_id)
 
     def __getitem__(self, index: int) -> Transition:
         # TODO does using a priority queue that reorders items affect sampling algorithms?
-        transition_id = self.transition_ids[index]
-        return self.transition_by_id[transition_id]
+        return self.transitions[index]
 
     def __len__(self) -> int:
-        return len(self.transition_ids)
+        return len(self.transitions)
+
+    def avg_reward(self):
+        return sum(t.reward for t in self.transitions) / len(self)
 
     def clear(self) -> None:
-        self.next_id = 0
-        self.transition_ids.clear()
-        self.transition_by_id.clear()
+        self.transitions = []
 
 
 class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
@@ -108,30 +113,29 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
         super().__init__()
         self.max_size = max_size
         self.priority_fn = drop
-        self.priority_by_id = {}
 
-    def add_transition(self, transition: Transition) -> int:
-        transition_id = super().add_transition(transition)
-        self.priority_by_id[transition_id] = self.priority_fn(transition)
-        return transition_id
+    def add_transition(self, transition: Transition) -> None:
+        if len(self.transitions) < self.max_size:
+            heapq.heappush(self.transitions, (self.priority_fn(transition), transition))
+        else:
+            heapq.heappushpop(
+                self.transitions, (self.priority_fn(transition), transition)
+            )
 
-    def remove_transition(self, transition_id: int) -> None:
-        del self.priority_by_id[transition_id]
-        return super().remove_transition(transition_id)
+    def shrink_to_fit(self):
+        while len(self.transitions) > self.max_size:
+            heapq.heappop(self.transitions)
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         for transition in transitions:
             self.add_transition(transition)
-            if len(self.transition_ids) >= self.max_size:
-                self.remove_transition(self.highest_priority_drop())
 
-    def highest_priority_drop(self) -> int:
-        # TODO use an actual priority queue (heapq package)?
-        return max(self.priority_by_id, key=self.priority_by_id.get)
-
-    def clear(self) -> None:
-        self.priority_by_id.clear()
-        return super().clear()
+    def __getitem__(self, index: int) -> Transition:
+        if isinstance(index, slice):
+            return [t for p, t in self.transitions[index]]
+        # TODO does using a priority queue that reorders items affect sampling algorithms?
+        priority, transition = self.transitions[index]
+        return transition
 
 
 class TransitionDatasetWithAdvantage(_TransitionDataset, TransitionObserver):
@@ -246,20 +250,31 @@ class MetaBatchSampler(BatchSampler):
         assert sum(pcts) == 1.0
         self.samplers_and_pcts = samplers_and_pcts
 
+    def _sized(self, batch_size: int) -> List[Tuple[BatchSampler, int]]:
+        sizes = [math.floor(p * batch_size) for _, p in self.samplers_and_pcts]
+        remainder = batch_size - sum(sizes)
+        assert 0 <= remainder < len(sizes)
+        for i in range(remainder):
+            sizes[i] += 1
+        assert sum(sizes) == batch_size
+        return [
+            (sampler, sizes[i])
+            for i, (sampler, _pct) in enumerate(self.samplers_and_pcts)
+        ]
+
     def sample_batch(self, batch_size: int) -> List[Transition]:
-        # FIXME: round(p * batch_size) does not result in total amount of `batch_size`
-        assert all(round(p * batch_size) > 0 for _, p in self.samplers_and_pcts)
-        return sum(
-            (s.sample_batch(round(p * batch_size)) for s, p in self.samplers_and_pcts),
+        batch = sum(
+            (s.sample_batch(size) for s, size in self._sized(batch_size)),
             start=[],
         )
+        assert len(batch) == batch_size
+        return batch
 
     def generate_batches(self, batch_size: int, drop_last: bool) -> BatchGenerator:
-        # FIXME: round(p * batch_size) does not result in total amount of `batch_size`
-        assert all(round(p * batch_size) > 0 for _, p in self.samplers_and_pcts)
         generators = [
-            s.generate_batches(round(p * batch_size), drop_last)
-            for s, p in self.samplers_and_pcts
+            s.generate_batches(size, drop_last) for s, size in self._sized(batch_size)
         ]
         for batches in zip(*generators):
-            yield sum(batches, start=[])
+            b = sum(batches, start=[])
+            assert len(b) == batch_size
+            yield b
