@@ -204,8 +204,10 @@ class DqnTaskMemory(Dqn):
         self, task_name: typing.Optional[str], variant_name: typing.Optional[str]
     ) -> None:
         super().task_variant_start(task_name, variant_name)
+        if not self.is_learning_allowed:
+            return
         key = (task_name, variant_name)
-        if self.is_learning_allowed and key not in self.buffers:
+        if key not in self.buffers:
             self.buffers[key] = TransitionDatasetWithMaxCapacity(self.max_size)
             self.samplers[key] = UniformRandomBatchSampler(self.buffers[key])
             for k, buffer in self.buffers.items():
