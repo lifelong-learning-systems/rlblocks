@@ -1,3 +1,4 @@
+import itertools
 import typing
 import gym
 import gym_minigrid.minigrid
@@ -23,8 +24,91 @@ GRID_SIZE = 5
 class LavaCrossing(CrossingEnv):
     def __init__(self):
         super().__init__(size=GRID_SIZE, num_crossings=1)
-        assert self.grid.get(*self.agent_pos) is None
+
+    def _gen_grid(self, width, height):
+        assert width % 2 == 1 and height % 2 == 1  # odd size
+
+        # Create an empty grid
+        self.grid = gym_minigrid.minigrid.Grid(width, height)
+
+        # Generate the surrounding walls
+        self.grid.wall_rect(0, 0, width, height)
+
+        # Place a goal square in the bottom-right corner
+        self.put_obj(gym_minigrid.minigrid.Goal(), width - 2, height - 2)
+
+        # Place the agent in a random location
         self.place_agent()
+
+        # Place obstacles (lava or walls)
+        v, h = object(), object()  # singleton `vertical` and `horizontal` objects
+
+        # Lava rivers or walls specified by direction and position in grid
+        rivers = [(v, i) for i in range(2, height - 2)]
+        rivers += [(h, j) for j in range(2, width - 2)]
+        self.np_random.shuffle(rivers)
+
+        excluded_v = [self.agent_pos[0]]
+        excluded_h = [self.agent_pos[1]]
+        sampled_rivers = []
+        while len(sampled_rivers) < self.num_crossings:
+            if not rivers:
+                # This agent placement is incompatible with grid size + num crossings, try again
+                self._gen_grid(width, height)
+                return
+            candidate_river = (direction, location) = rivers.pop()
+            if direction is v:
+                if location not in excluded_v:
+                    sampled_rivers.append(candidate_river)
+                    excluded_v.extend([location-1, location, location+1])
+            elif direction is h:
+                if location not in excluded_h:
+                    sampled_rivers.append(candidate_river)
+                    excluded_h.extend([location-1, location, location+1])
+            else:
+                assert False
+        rivers = sampled_rivers
+
+        rivers_v = sorted([pos for direction, pos in rivers if direction is v])
+        rivers_h = sorted([pos for direction, pos in rivers if direction is h])
+        obstacle_pos = itertools.chain(
+            itertools.product(range(1, width - 1), rivers_h),
+            itertools.product(rivers_v, range(1, height - 1)),
+        )
+        for i, j in obstacle_pos:
+            self.put_obj(self.obstacle_type(), i, j)
+
+        assert self.grid.get(*self.agent_pos) is None, "Object placed on top of agent!"
+
+        # Create openings
+        limits_v = [0] + rivers_v + [height - 1]
+        limits_h = [0] + rivers_h + [width - 1]
+        # Current agent room
+        room_i = sum(lim < self.agent_pos[0] for lim in limits_v) - 1
+        room_j = sum(lim < self.agent_pos[1] for lim in limits_h) - 1
+        # Sample path to goal
+        path = [h] * (len(rivers_v) - room_i) + [v] * (len(rivers_h) - room_j)
+        self.np_random.shuffle(path)
+        for direction in path:
+            if direction is h:
+                i = limits_v[room_i + 1]
+                j = self.np_random.choice(
+                    range(limits_h[room_j] + 1, limits_h[room_j + 1]))
+                room_i += 1
+            elif direction is v:
+                i = self.np_random.choice(
+                    range(limits_v[room_i] + 1, limits_v[room_i + 1]))
+                j = limits_h[room_j + 1]
+                room_j += 1
+            else:
+                assert False
+            self.grid.set(i, j, None)
+
+        self.mission = (
+            "avoid the lava and get to the green goal square"
+            if self.obstacle_type == gym_minigrid.minigrid.Lava
+            else "find the opening and get to the green goal square"
+        )
 
 
 class Empty(EmptyEnv):
@@ -77,9 +161,13 @@ class MiniGridCenteredFullyObsWrapper(gym.core.ObservationWrapper):
 
         # Verify that the rotation is correct:
         front_cell = env.grid.get(*env.front_pos)
-        front_idx = centered_grid[(env.width + 1) // 2 + 1, (env.height + 1) // 2, 0]
+        front_idx = centered_grid[(a - 1) // 2 + 1, (b - 1) // 2, 0]
         front_type = gym_minigrid.envs.IDX_TO_OBJECT[front_idx]
-        assert front_type == ("empty" if front_cell is None else front_cell.type)
+        assert front_type == ("empty" if front_cell is None else front_cell.type), (
+            f"ObsWrapper rotation may be incorrect. "
+            f"Expected {'empty' if front_cell is None else front_cell.type} in front of agent, "
+            f"instead found {front_type}."
+        )
 
         return {"mission": obs["mission"], "image": centered_grid}
 
