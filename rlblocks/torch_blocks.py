@@ -1,12 +1,30 @@
-import itertools
-import typing
+"""
+Copyright © 2021-2022 The Johns Hopkins University Applied Physics Laboratory LLC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+"""
+
 from typing import *
 import torch
 from torch import nn
 from torch.distributions import Distribution
 import numpy as np
-import scipy.signal
-from .base import Action, Observation, Transition, TransitionObserver, Vectorized
+from .base import Action, Observation
 
 
 class TorchBatch(NamedTuple):
@@ -117,21 +135,6 @@ class ClippedPolicyGradientLoss:
         ).mean()
 
 
-class DeterministicPolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
-    # loss used in DDPG
-    def __init__(
-        self,
-        action_fn: Callable[[Observation], Action],
-        value_fn: Callable[[Observation, Action], Value],
-    ) -> None:
-        self.action_fn = action_fn
-        self.value_fn = value_fn
-
-    def __call__(self, batch: TorchBatch) -> torch.Tensor:
-        action = self.action_fn(batch.state)
-        return (0.0 - self.value_fn(batch.state, action)).mean()
-
-
 class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
     # used in both A2C and PPO
     def __init__(
@@ -153,31 +156,6 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
         return self.criterion(values, target_values)
 
 
-class TDActionValueLoss(Callable[[TorchBatch], torch.Tensor]):
-    # Used in DDPG to train critic
-    def __init__(
-        self,
-        action_value_fn: Callable[[Observation, Action], Value],
-        old_action_fn: Callable[[Observation], Action],
-        old_action_value_fn: Callable[[Observation, Action], Value],
-        criterion: nn.Module = nn.MSELoss(),
-        discount: float = 0.99,
-    ) -> None:
-        self.action_value_fn = action_value_fn
-        self.old_action_fn = old_action_fn
-        self.old_action_value_fn = old_action_value_fn
-        self.criterion = criterion
-        self.discount = discount
-
-    def __call__(self, batch: TorchBatch) -> torch.Tensor:
-        with torch.no_grad():
-            next_action = self.old_action_fn(batch.next_state)
-            next_v = self.old_action_value_fn(batch.next_state, next_action)
-            target_v = batch.reward + self.discount * next_v * (1.0 - batch.done)
-        v = self.action_value_fn(batch.state, batch.action)
-        return self.criterion(v, target_v)
-
-
 class ElasticWeightConsolidationLoss:
     def __init__(self, model: nn.Module):
         self._model = model
@@ -195,14 +173,14 @@ class ElasticWeightConsolidationLoss:
                 loss += (f * (anchors[name] - curr_param).square()).sum()
         return 0.5 * loss
 
-    def set_anchors(self, key: typing.Hashable):
+    def set_anchors(self, task: Hashable):
         # This is the per-task version of EWC. The online alternative replaces
         # these values (with optional relaxation) instead of extending them
-        self._anchors[key] = {
+        self._anchors[task] = {
             name: layer.data.clone() for name, layer in self._model.named_parameters()
         }
 
-    def sample_fisher_information(self, key: typing.Hashable):
+    def sample_fisher_information(self, task: Hashable):
         # Importance here is computed from parameter gradients
         # Before calling this method, the user must compute those gradients using something like:
         #   `loss_fn(batch_data).backward()`
@@ -210,17 +188,17 @@ class ElasticWeightConsolidationLoss:
             name: layer.grad.data.clone().square()
             for name, layer in self._model.named_parameters()
         }
-        if key not in self._fisher_information:
-            self._fisher_information[key] = f_sample
-            self._num_samples[key] = 0
+        if task not in self._fisher_information:
+            self._fisher_information[task] = f_sample
+            self._num_samples[task] = 0
         else:
-            self._num_samples[key] += 1
+            self._num_samples[task] += 1
             for name, value in f_sample.items():
-                self._fisher_information[key][name] += value
+                self._fisher_information[task][name] += value
 
-    def remove_anchors(self, key: typing.Hashable):
-        self._anchors.pop(key, None)
-        self._fisher_information.pop(key, None)
+    def remove_anchors(self, task: Hashable):
+        self._anchors.pop(task, None)
+        self._fisher_information.pop(task, None)
 
 
 class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
