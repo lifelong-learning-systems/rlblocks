@@ -114,21 +114,6 @@ class ClippedPolicyGradientLoss:
         ).mean()
 
 
-class DeterministicPolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
-    # loss used in DDPG
-    def __init__(
-        self,
-        action_fn: Callable[[Observation], Action],
-        value_fn: Callable[[Observation, Action], Value],
-    ) -> None:
-        self.action_fn = action_fn
-        self.value_fn = value_fn
-
-    def __call__(self, batch: TorchBatch) -> torch.Tensor:
-        action = self.action_fn(batch.state)
-        return (0.0 - self.value_fn(batch.state, action)).mean()
-
-
 class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
     # used in both A2C and PPO
     def __init__(
@@ -148,31 +133,6 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
 
         values = self.state_value_fn(batch.state)
         return self.criterion(values, target_values)
-
-
-class TDActionValueLoss(Callable[[TorchBatch], torch.Tensor]):
-    # Used in DDPG to train critic
-    def __init__(
-        self,
-        action_value_fn: Callable[[Observation, Action], Value],
-        old_action_fn: Callable[[Observation], Action],
-        old_action_value_fn: Callable[[Observation, Action], Value],
-        criterion: nn.Module = nn.MSELoss(),
-        discount: float = 0.99,
-    ) -> None:
-        self.action_value_fn = action_value_fn
-        self.old_action_fn = old_action_fn
-        self.old_action_value_fn = old_action_value_fn
-        self.criterion = criterion
-        self.discount = discount
-
-    def __call__(self, batch: TorchBatch) -> torch.Tensor:
-        with torch.no_grad():
-            next_action = self.old_action_fn(batch.next_state)
-            next_v = self.old_action_value_fn(batch.next_state, next_action)
-            target_v = batch.reward + self.discount * next_v * (1.0 - batch.done)
-        v = self.action_value_fn(batch.state, batch.action)
-        return self.criterion(v, target_v)
 
 
 class ElasticWeightConsolidationLoss:
