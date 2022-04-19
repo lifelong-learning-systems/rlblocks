@@ -27,7 +27,7 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 import scipy
-from ..base import Transition, TransitionObserver, Vectorized
+from .base import Transition, TransitionObserver, Vectorized
 
 PriorityFn = Callable[[Transition], float]
 

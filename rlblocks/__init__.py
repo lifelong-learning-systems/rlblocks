@@ -59,3 +59,14 @@ from rlblocks.torch_blocks import (
     NumpyToTorchConverter,
     SampleAction,
 )
+from rlblocks.replay import (
+    TorchBatch,
+    PriorityFn,
+    collate,
+    TransitionDatasetWithMaxCapacity,
+    TransitionDatasetWithAdvantage,
+    BatchGenerator,
+    BatchSampler,
+    UniformRandomBatchSampler,
+    MetaBatchSampler,
+)

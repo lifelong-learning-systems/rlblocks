@@ -25,27 +25,7 @@ import gym
 import numpy as np
 import tella
 from torch import nn, optim
-from rlblocks import (
-    ArgmaxAction,
-    ChooseBetween,
-    Interpolate,
-    NumpyToTorchConverter,
-    RewardTracker,
-    Every,
-    Steps,
-    HardParameterUpdate,
-    PeriodicCallbacks,
-    QLoss,
-    DoubleQLoss,
-    ElasticWeightConsolidationLoss,
-)
-from rlblocks.replay.datasets import (
-    MetaBatchSampler,
-    TransitionDatasetWithMaxCapacity,
-    UniformRandomBatchSampler,
-    collate,
-    TorchBatch,
-)
+from rlblocks import *
 
 
 class Dqn(tella.ContinualRLAgent):
