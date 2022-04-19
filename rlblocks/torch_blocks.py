@@ -1,12 +1,9 @@
-import itertools
-import typing
 from typing import *
 import torch
 from torch import nn
 from torch.distributions import Distribution
 import numpy as np
-import scipy.signal
-from .base import Action, Observation, Transition, TransitionObserver, Vectorized
+from .base import Action, Observation
 
 
 class TorchBatch(NamedTuple):
@@ -195,14 +192,14 @@ class ElasticWeightConsolidationLoss:
                 loss += (f * (anchors[name] - curr_param).square()).sum()
         return 0.5 * loss
 
-    def set_anchors(self, key: typing.Hashable):
+    def set_anchors(self, key: Hashable):
         # This is the per-task version of EWC. The online alternative replaces
         # these values (with optional relaxation) instead of extending them
         self._anchors[key] = {
             name: layer.data.clone() for name, layer in self._model.named_parameters()
         }
 
-    def sample_fisher_information(self, key: typing.Hashable):
+    def sample_fisher_information(self, key: Hashable):
         # Importance here is computed from parameter gradients
         # Before calling this method, the user must compute those gradients using something like:
         #   `loss_fn(batch_data).backward()`
@@ -218,7 +215,7 @@ class ElasticWeightConsolidationLoss:
             for name, value in f_sample.items():
                 self._fisher_information[key][name] += value
 
-    def remove_anchors(self, key: typing.Hashable):
+    def remove_anchors(self, key: Hashable):
         self._anchors.pop(key, None)
         self._fisher_information.pop(key, None)
 

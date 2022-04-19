@@ -60,11 +60,11 @@ class LavaCrossing(CrossingEnv):
             if direction is v:
                 if location not in excluded_v:
                     sampled_rivers.append(candidate_river)
-                    excluded_v.extend([location-1, location, location+1])
+                    excluded_v.extend([location - 1, location, location + 1])
             elif direction is h:
                 if location not in excluded_h:
                     sampled_rivers.append(candidate_river)
-                    excluded_h.extend([location-1, location, location+1])
+                    excluded_h.extend([location - 1, location, location + 1])
             else:
                 assert False
         rivers = sampled_rivers
@@ -93,11 +93,13 @@ class LavaCrossing(CrossingEnv):
             if direction is h:
                 i = limits_v[room_i + 1]
                 j = self.np_random.choice(
-                    range(limits_h[room_j] + 1, limits_h[room_j + 1]))
+                    range(limits_h[room_j] + 1, limits_h[room_j + 1])
+                )
                 room_i += 1
             elif direction is v:
                 i = self.np_random.choice(
-                    range(limits_v[room_i] + 1, limits_v[room_i + 1]))
+                    range(limits_v[room_i] + 1, limits_v[room_i + 1])
+                )
                 j = limits_h[room_j + 1]
                 room_j += 1
             else:

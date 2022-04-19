@@ -1,5 +1,3 @@
-
-
 import tella
 
 from experiments.agents import RandAgent

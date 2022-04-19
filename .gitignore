@@ -1,2 +1,11 @@
-**/__pycache__
-experiments/logs/
+*~
+__pycache__/
+*.pyc
+venv
+.idea
+.DS_Store
+
+*.egg-info/
+*logs/
+
+docs/_build/

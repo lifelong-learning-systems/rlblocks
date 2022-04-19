@@ -143,7 +143,9 @@ class CallFunctions(Callable[[], None]):
 
 
 class PeriodicCallbacks(TransitionObserver):
-    def __init__(self, callback_by_timer: List[Tuple[Timer, Callable[[], None]]]) -> None:
+    def __init__(
+        self, callback_by_timer: List[Tuple[Timer, Callable[[], None]]]
+    ) -> None:
         super().__init__()
         self.callback_by_timer = callback_by_timer
 
