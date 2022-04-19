@@ -35,7 +35,6 @@ from rlblocks.base import (
     ActionTracker,
     PeriodicCallbacks,
     run_env_interaction,
-    CallFunctions,
 )
 from rlblocks.torch_blocks import (
     PolyakParameterUpdate,
@@ -44,9 +43,7 @@ from rlblocks.torch_blocks import (
     DoubleQLoss,
     PolicyGradientLoss,
     ClippedPolicyGradientLoss,
-    DeterministicPolicyGradientLoss,
     TDAdvantageLoss,
-    TDActionValueLoss,
     ElasticWeightConsolidationLoss,
     OnlineElasticWeightConsolidationLoss,
     ArgmaxAction,

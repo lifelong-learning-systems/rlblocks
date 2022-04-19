@@ -24,15 +24,6 @@ from torch import nn
 from torch.nn import functional as tnnf
 
 
-# MLP network for cartpole
-def make_mlp() -> nn.Module:
-    return nn.Sequential(
-        nn.Linear(4, 64),
-        nn.ReLU(),
-        nn.Linear(64, 2),
-    )
-
-
 class MiniGridIndexToOneHot(nn.Module):
     """
     Standard observations in MiniGrid are 7x7x3, describing a 7x7 grid of cells

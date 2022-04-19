@@ -26,12 +26,12 @@ import numpy as np
 import tella
 from torch import nn, optim
 from rlblocks import *
+from .networks import make_cnn
 
 
 class Dqn(tella.ContinualRLAgent):
     def __init__(
         self,
-        network: nn.Module,
         rng_seed: int,
         observation_space: gym.Space,
         action_space: gym.Space,
@@ -54,10 +54,12 @@ class Dqn(tella.ContinualRLAgent):
         self.rng = np.random.default_rng(self.rng_seed)
 
         self.replay_buffer = TransitionDatasetWithMaxCapacity(max_size=10_000)
-        self.replay_sampler = UniformRandomBatchSampler(self.replay_buffer)
+        self.replay_sampler = UniformRandomBatchSampler(
+            self.replay_buffer, seed=self.rng.bit_generator.random_raw()
+        )
 
-        self.model = network
-        self.target_model = deepcopy(network)
+        self.model = make_cnn()
+        self.target_model = deepcopy(self.model)
         self.dqn_loss_fn = DoubleQLoss(
             self.model, self.target_model, criterion=nn.SmoothL1Loss()
         )
@@ -78,22 +80,23 @@ class Dqn(tella.ContinualRLAgent):
             self.replay_buffer,
             self.reward_tracker,
             PeriodicCallbacks(
-                [
-                    (
-                        Every(1000, Steps),
-                        HardParameterUpdate(self.model, self.target_model),
-                    ),
-                    (Every(1, Steps, offset=200), self.update_model),
-                    (Every(500, Steps), lambda: print(self.reward_tracker)),
-                ],
+                (
+                    Every(1000, Steps),
+                    HardParameterUpdate(self.model, self.target_model),
+                ),
+                (Every(1, Steps, offset=200), self.update_model),
+                (Every(500, Steps), lambda: print(self.reward_tracker)),
             ),
         ]
+
+    def compute_loss(self, batch: TorchBatch):
+        return self.dqn_loss_fn(batch)
 
     def update_model(self, n_iter: int = 4):
         for _ in range(n_iter * self.num_envs):
             batch = collate(self.replay_sampler.sample_batch(batch_size=64))
             batch.reward += self.reward_signal_per_step
-            loss = self.dqn_loss_fn(batch)
+            loss = self.compute_loss(batch)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -124,7 +127,6 @@ class Dqn(tella.ContinualRLAgent):
 class DqnEwc(Dqn):
     def __init__(
         self,
-        network: nn.Module,
         rng_seed: int,
         observation_space: gym.Space,
         action_space: gym.Space,
@@ -132,7 +134,6 @@ class DqnEwc(Dqn):
         config_file: typing.Optional[str] = None,
     ) -> None:
         super().__init__(
-            network,
             rng_seed,
             observation_space,
             action_space,
@@ -142,14 +143,8 @@ class DqnEwc(Dqn):
         self.ewc_loss_fn = ElasticWeightConsolidationLoss(self.model)
         self.ewc_lambda = 1e10  # NOTE: original paper used 400
 
-    def update_model(self, n_iter: int = 4):
-        for _ in range(n_iter * self.num_envs):
-            batch = collate(self.replay_sampler.sample_batch(batch_size=64))
-            batch.reward += self.reward_signal_per_step
-            loss = self.dqn_loss_fn(batch) + self.ewc_loss_fn() * self.ewc_lambda
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+    def compute_loss(self, batch: TorchBatch):
+        return super().compute_loss(batch) + self.ewc_loss_fn() * self.ewc_lambda
 
     def task_variant_start(
         self,
@@ -160,7 +155,7 @@ class DqnEwc(Dqn):
             print(
                 f"Starting learning on {task_name} - {variant_name} (removing associated EWC weights)"
             )
-            self.ewc_loss_fn.remove_anchors(key=(task_name, variant_name))
+            self.ewc_loss_fn.remove_anchors(task=(task_name, variant_name))
 
     def task_variant_end(
         self,
@@ -171,21 +166,20 @@ class DqnEwc(Dqn):
             print(
                 f"Finished learning on {task_name} - {variant_name} (adding associated EWC weights)"
             )
-            key = (task_name, variant_name)
-            self.ewc_loss_fn.set_anchors(key)
+            task = (task_name, variant_name)
+            self.ewc_loss_fn.set_anchors(task)
             # NOTE: original paper only drew 100 batches to calculate this
             for transitions in self.replay_sampler.generate_batches(128, True):
                 batch = collate(transitions)
                 self.optimizer.zero_grad()
                 # .backward() puts gradients as an attribute of each parameter
                 self.dqn_loss_fn(batch).backward()
-                self.ewc_loss_fn.sample_fisher_information(key)
+                self.ewc_loss_fn.sample_fisher_information(task)
 
 
 class DqnTaskMemory(Dqn):
     def __init__(
         self,
-        network: nn.Module,
         rng_seed: int,
         observation_space: gym.Space,
         action_space: gym.Space,
@@ -193,7 +187,7 @@ class DqnTaskMemory(Dqn):
         config_file: typing.Optional[str] = None,
     ) -> None:
         super().__init__(
-            network, rng_seed, observation_space, action_space, num_envs, config_file
+            rng_seed, observation_space, action_space, num_envs, config_file
         )
         self.buffers = {}
         self.samplers = {}
@@ -208,11 +202,13 @@ class DqnTaskMemory(Dqn):
         key = (task_name, variant_name)
         if key not in self.buffers:
             self.buffers[key] = TransitionDatasetWithMaxCapacity(self.max_size)
-            self.samplers[key] = UniformRandomBatchSampler(self.buffers[key])
+            self.samplers[key] = UniformRandomBatchSampler(
+                self.buffers[key], seed=self.rng.bit_generator.random_raw()
+            )
             for k, buffer in self.buffers.items():
                 buffer.max_size = self.max_size // len(self.buffers)
                 buffer.shrink_to_fit()
-
+            assert sum(b.max_size for b in self.buffers.values()) <= self.max_size
             self.replay_sampler = MetaBatchSampler(
                 *[
                     (sampler, 1 / len(self.samplers))

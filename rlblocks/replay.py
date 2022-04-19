@@ -275,6 +275,7 @@ class MetaBatchSampler(BatchSampler):
         for i in range(remainder):
             sizes[i] += 1
         assert sum(sizes) == batch_size
+        assert all(s > 0 for s in sizes)
         return [
             (sampler, sizes[i])
             for i, (sampler, _pct) in enumerate(self.samplers_and_pcts)

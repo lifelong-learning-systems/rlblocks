@@ -19,17 +19,9 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-
-import typing
-import gym
 import tella
-import sys
-import os
-
-sys.path.append(os.path.abspath(os.curdir))
-
-from experiments.agents import Dqn, DqnEwc, make_cnn, DqnTaskMemory
-from experiments.curriculums.minigrid import (
+from .dqn import Dqn, DqnEwc, DqnTaskMemory
+from .curriculum import (
     MiniGridCrossing,
     LavaCrossingSteCurriculum,
     EmptyCrossingSteCurriculum,
@@ -37,80 +29,23 @@ from experiments.curriculums.minigrid import (
 )
 
 
-class DqnCnn(Dqn):
-    def __init__(
-        self,
-        rng_seed: int,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        num_envs: int,
-        config_file: typing.Optional[str] = None,
-    ) -> None:
-        super().__init__(
-            make_cnn(),
-            rng_seed,
-            observation_space,
-            action_space,
-            num_envs,
-            config_file,
-        )
-
-
-class DqnEwcCnn(DqnEwc):
-    def __init__(
-        self,
-        rng_seed: int,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        num_envs: int,
-        config_file: typing.Optional[str] = None,
-    ) -> None:
-        super().__init__(
-            make_cnn(),
-            rng_seed,
-            observation_space,
-            action_space,
-            num_envs,
-            config_file,
-        )
-
-
-class DqnTaskMemoryCnn(DqnTaskMemory):
-    def __init__(
-        self,
-        rng_seed: int,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        num_envs: int,
-        config_file: typing.Optional[str] = None,
-    ) -> None:
-        super().__init__(
-            make_cnn(),
-            rng_seed,
-            observation_space,
-            action_space,
-            num_envs,
-            config_file,
-        )
-
-
 def train_stes():
     tella.rl_experiment(
-        agent_factory=DqnCnn,
+        agent_factory=Dqn,
         curriculum_factory=LavaCrossingSteCurriculum,
         num_lifetimes=1,
         num_parallel_envs=5,
         log_dir="logs",
     )
     tella.rl_experiment(
-        agent_factory=DqnCnn,
+        agent_factory=Dqn,
         curriculum_factory=EmptyCrossingSteCurriculum,
         num_lifetimes=1,
         num_parallel_envs=5,
         log_dir="logs",
     )
     tella.rl_experiment(
-        agent_factory=DqnCnn,
+        agent_factory=Dqn,
         curriculum_factory=ObstacleCrossingSteCurriculum,
         num_lifetimes=1,
         num_parallel_envs=5,
@@ -120,7 +55,7 @@ def train_stes():
 
 def train_dqn():
     tella.rl_experiment(
-        agent_factory=DqnCnn,
+        agent_factory=Dqn,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
         num_parallel_envs=5,
@@ -130,7 +65,7 @@ def train_dqn():
 
 def train_dqn_ewc():
     tella.rl_experiment(
-        agent_factory=DqnEwcCnn,
+        agent_factory=DqnEwc,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
         num_parallel_envs=5,
@@ -140,7 +75,7 @@ def train_dqn_ewc():
 
 def train_dqn_task_memory():
     tella.rl_experiment(
-        agent_factory=DqnTaskMemoryCnn,
+        agent_factory=DqnTaskMemory,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
         num_parallel_envs=5,

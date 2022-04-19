@@ -173,14 +173,14 @@ class ElasticWeightConsolidationLoss:
                 loss += (f * (anchors[name] - curr_param).square()).sum()
         return 0.5 * loss
 
-    def set_anchors(self, key: Hashable):
+    def set_anchors(self, task: Hashable):
         # This is the per-task version of EWC. The online alternative replaces
         # these values (with optional relaxation) instead of extending them
-        self._anchors[key] = {
+        self._anchors[task] = {
             name: layer.data.clone() for name, layer in self._model.named_parameters()
         }
 
-    def sample_fisher_information(self, key: Hashable):
+    def sample_fisher_information(self, task: Hashable):
         # Importance here is computed from parameter gradients
         # Before calling this method, the user must compute those gradients using something like:
         #   `loss_fn(batch_data).backward()`
@@ -188,17 +188,17 @@ class ElasticWeightConsolidationLoss:
             name: layer.grad.data.clone().square()
             for name, layer in self._model.named_parameters()
         }
-        if key not in self._fisher_information:
-            self._fisher_information[key] = f_sample
-            self._num_samples[key] = 0
+        if task not in self._fisher_information:
+            self._fisher_information[task] = f_sample
+            self._num_samples[task] = 0
         else:
-            self._num_samples[key] += 1
+            self._num_samples[task] += 1
             for name, value in f_sample.items():
-                self._fisher_information[key][name] += value
+                self._fisher_information[task][name] += value
 
-    def remove_anchors(self, key: Hashable):
-        self._anchors.pop(key, None)
-        self._fisher_information.pop(key, None)
+    def remove_anchors(self, task: Hashable):
+        self._anchors.pop(task, None)
+        self._fisher_information.pop(task, None)
 
 
 class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):

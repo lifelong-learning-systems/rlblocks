@@ -153,20 +153,8 @@ class ActionTracker(TransitionObserver):
         )
 
 
-class CallFunctions(Callable[[], None]):
-    def __init__(self, *fns: Callable[[], None]) -> None:
-        super().__init__()
-        self.fns = fns
-
-    def __call__(self) -> None:
-        for fn in self.fns:
-            fn()
-
-
 class PeriodicCallbacks(TransitionObserver):
-    def __init__(
-        self, callback_by_timer: List[Tuple[Timer, Callable[[], None]]]
-    ) -> None:
+    def __init__(self, *callback_by_timer: Tuple[Timer, Callable[[], None]]) -> None:
         super().__init__()
         self.callback_by_timer = callback_by_timer
 
