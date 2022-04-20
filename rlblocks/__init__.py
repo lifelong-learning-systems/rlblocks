@@ -29,6 +29,7 @@ from rlblocks.torch_blocks import (
     TDActionValueLoss,
     ElasticWeightConsolidationLoss,
     OnlineElasticWeightConsolidationLoss,
+    SlicedCramerPreservation,
     ArgmaxAction,
     ChooseBetween,
     Interpolate,

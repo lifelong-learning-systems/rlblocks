@@ -19,6 +19,7 @@ from rlblocks import (
     QLoss,
     DoubleQLoss,
     ElasticWeightConsolidationLoss,
+    SlicedCramerPreservation,
 )
 from rlblocks.replay.datasets import (
     MetaBatchSampler,
@@ -222,3 +223,63 @@ class DqnTaskMemory(Dqn):
             )
 
         self.transition_observers[0] = self.buffers[key]
+
+
+class DqnScp(Dqn):
+    def __init__(
+        self,
+        network: nn.Module,
+        rng_seed: int,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        num_envs: int,
+        config_file: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(
+            network,
+            rng_seed,
+            observation_space,
+            action_space,
+            num_envs,
+            config_file,
+        )
+        self.scp_projections = 10
+        self.scp_loss_fn = SlicedCramerPreservation(self.model, self.scp_projections)
+        self.scp_lambda = 1  # NOTE: original paper used 400
+
+    def update_model(self, n_iter: int = 4):
+        for _ in range(n_iter * self.num_envs):
+            batch = collate(self.replay_sampler.sample_batch(batch_size=64))
+            batch.reward += self.reward_signal_per_step
+            loss = self.dqn_loss_fn(batch) + self.scp_loss_fn() * self.scp_lambda
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+    def task_variant_start(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        if self.is_learning_allowed:
+            print(f"Starting learning on {task_name} - {variant_name}")
+            # self.scp_loss_fn.remove_anchors(key=(task_name, variant_name))
+
+    def task_variant_end(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        if self.is_learning_allowed:
+            print(
+                f"Finished learning on {task_name} - {variant_name} (adding associated EWC weights)"
+            )
+            key = (task_name, variant_name)
+            self.scp_loss_fn.set_anchors(key)
+            # NOTE: original paper only drew 100 batches to calculate this
+            for transitions in self.replay_sampler.generate_batches(128, True):
+                batch = collate(transitions)
+                self.optimizer.zero_grad()
+                # .backward() puts gradients as an attribute of each parameter
+                self.dqn_loss_fn(batch).backward()
+                # self.scp_loss_fn.sample_fisher_information(key)

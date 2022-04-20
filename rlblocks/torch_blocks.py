@@ -256,6 +256,62 @@ class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
             ]
 
 
+class SlicedCramerPreservation:
+    def __init__(self, model: nn.Module, projections: int):
+        self._model = model
+
+        # Start with no anchors
+        self._anchors = {}
+        self._num_samples = {}
+        self._projections = projections
+
+    def __call__(self) -> torch.Tensor:
+        loss = 0
+        for key, anchors in self._anchors.items():
+            for name, curr_param in self._model.named_parameters():
+                if not name.endswith("bias"):
+                    # Calculate the average response
+                    mean_response = curr_param.mean(axis=0)
+                    dim = mean_response.shape[0]
+
+                    # Initialize the reponse matrix
+                    synaptic_response = torch.zeros(
+                        mean_response.shape[0], mean_response.shape[0]
+                    )
+                    for l in range(self._projections):
+                        # Slice the mean response
+                        psi = torch.tensor(
+                            self.sample_unit_sphere(dim), dtype=torch.float32
+                        )
+                        unit_slice = torch.dot(psi, mean_response)
+                        # Update with the gradient of the parameters
+                        unit_slice.backward()
+                        synaptic_response += (1 / self._projections) * torch.mm(
+                            curr_param.grad.T, curr_param.grad
+                        )
+
+                    # Calculate loss with diagonal and change to anchor values
+                    syn_prod = synaptic_response.diagonal()
+                    loss += (syn_prod * (anchors[name] - curr_param).square()).sum()
+        return loss
+
+    def sample_unit_sphere(sefl, dim: int):
+        u = np.random.normal(0, 1, dim)
+        d = np.sum(u**2) ** (0.5)
+        return u / d
+
+    def set_anchors(self, key: typing.Hashable):
+        # This is the per-task version of EWC. The online alternative replaces
+        # these values (with optional relaxation) instead of extending them
+        self._anchors[key] = {
+            name: layer.data.clone() for name, layer in self._model.named_parameters()
+        }
+
+    def remove_anchors(self, key: typing.Hashable):
+        self._anchors.pop(key, None)
+        # self._fisher_information.pop(key, None)
+
+
 class SampleAction(Callable[[Observation], Action]):
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
