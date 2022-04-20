@@ -159,6 +159,7 @@ class DqnEwc(Dqn):
         task_name: typing.Optional[str],
         variant_name: typing.Optional[str],
     ) -> None:
+        super().task_variant_start(task_name, variant_name)
         if self.is_learning_allowed:
             print(
                 f"Starting learning on {task_name} - {variant_name} (removing associated EWC weights)"
