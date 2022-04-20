@@ -29,27 +29,38 @@ from .curriculum import (
 )
 
 
+NUM_ENV = 10
+AGENT_SEED = 12345
+CURRICULUM_SEED = 54321
+
+
 def train_stes():
     tella.rl_experiment(
         agent_factory=Dqn,
         curriculum_factory=LavaCrossingSteCurriculum,
         num_lifetimes=1,
-        num_parallel_envs=5,
+        num_parallel_envs=NUM_ENV,
         log_dir="logs",
+        agent_seed=AGENT_SEED,
+        curriculum_seed=CURRICULUM_SEED,
     )
     tella.rl_experiment(
         agent_factory=Dqn,
         curriculum_factory=EmptyCrossingSteCurriculum,
         num_lifetimes=1,
-        num_parallel_envs=5,
+        num_parallel_envs=NUM_ENV,
         log_dir="logs",
+        agent_seed=AGENT_SEED,
+        curriculum_seed=CURRICULUM_SEED,
     )
     tella.rl_experiment(
         agent_factory=Dqn,
         curriculum_factory=ObstacleCrossingSteCurriculum,
         num_lifetimes=1,
-        num_parallel_envs=5,
+        num_parallel_envs=NUM_ENV,
         log_dir="logs",
+        agent_seed=AGENT_SEED,
+        curriculum_seed=CURRICULUM_SEED,
     )
 
 
@@ -58,8 +69,10 @@ def train_dqn():
         agent_factory=Dqn,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
-        num_parallel_envs=5,
+        num_parallel_envs=NUM_ENV,
         log_dir="logs",
+        agent_seed=AGENT_SEED,
+        curriculum_seed=CURRICULUM_SEED,
     )
 
 
@@ -68,8 +81,10 @@ def train_dqn_ewc():
         agent_factory=DqnEwc,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
-        num_parallel_envs=5,
+        num_parallel_envs=NUM_ENV,
         log_dir="logs",
+        agent_seed=AGENT_SEED,
+        curriculum_seed=CURRICULUM_SEED,
     )
 
 
@@ -78,13 +93,15 @@ def train_dqn_task_memory():
         agent_factory=DqnTaskMemory,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
-        num_parallel_envs=5,
+        num_parallel_envs=NUM_ENV,
         log_dir="logs",
+        agent_seed=AGENT_SEED,
+        curriculum_seed=CURRICULUM_SEED,
     )
 
 
 if __name__ == "__main__":
-    # train_stes()
-    # train_dqn()
+    train_stes()
+    train_dqn()
     train_dqn_ewc()
-    # train_dqn_task_memory()
+    train_dqn_task_memory()

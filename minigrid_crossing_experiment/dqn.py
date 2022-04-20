@@ -26,7 +26,7 @@ import numpy as np
 import tella
 from torch import nn, optim
 from rlblocks import *
-from .networks import make_cnn
+from .networks import make_minigrid_net
 
 
 class Dqn(tella.ContinualRLAgent):
@@ -58,7 +58,7 @@ class Dqn(tella.ContinualRLAgent):
             self.replay_buffer, seed=self.rng.bit_generator.random_raw()
         )
 
-        self.model = make_cnn()
+        self.model = make_minigrid_net()
         self.target_model = deepcopy(self.model)
         self.dqn_loss_fn = DoubleQLoss(
             self.model, self.target_model, criterion=nn.SmoothL1Loss()
@@ -66,10 +66,11 @@ class Dqn(tella.ContinualRLAgent):
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
 
         self.greedy_policy = NumpyToTorchConverter(ArgmaxAction(self.model))
+        self.epsilon = Interpolate(start=1.0, end=0.02, n=3_000)
         self.epsilon_greedy_policy = ChooseBetween(
             lambda o: self.rng.choice(self.action_space.n, size=len(o)),
             self.greedy_policy,
-            prob_fn=Interpolate(start=1.0, end=0.02, n=10_000),
+            prob_fn=self.epsilon,
             rng=self.rng,
         )
 
@@ -123,6 +124,13 @@ class Dqn(tella.ContinualRLAgent):
             for observer in self.transition_observers:
                 observer.receive_transitions(masked_transitions)
 
+    def task_variant_start(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        self.epsilon.reset()
+
 
 class DqnEwc(Dqn):
     def __init__(
@@ -151,6 +159,7 @@ class DqnEwc(Dqn):
         task_name: typing.Optional[str],
         variant_name: typing.Optional[str],
     ) -> None:
+        super().task_variant_start(task_name, variant_name)
         if self.is_learning_allowed:
             print(
                 f"Starting learning on {task_name} - {variant_name} (removing associated EWC weights)"
