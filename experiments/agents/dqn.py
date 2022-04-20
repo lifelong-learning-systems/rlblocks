@@ -243,10 +243,11 @@ class DqnScp(Dqn):
             num_envs,
             config_file,
         )
-        self.scp_projections = 10
+        self.scp_projections = 100
         self.scp_loss_fn = SlicedCramerPreservation(self.model, self.scp_projections)
-        self.scp_lambda = 1  # NOTE: original paper used 400
+        self.scp_lambda = 10  # NOTE: original paper used 400
 
+    
     def update_model(self, n_iter: int = 4):
         for _ in range(n_iter * self.num_envs):
             batch = collate(self.replay_sampler.sample_batch(batch_size=64))
@@ -263,7 +264,7 @@ class DqnScp(Dqn):
     ) -> None:
         if self.is_learning_allowed:
             print(f"Starting learning on {task_name} - {variant_name}")
-            # self.scp_loss_fn.remove_anchors(key=(task_name, variant_name))
+            #self.scp_loss_fn.remove_anchors(key=(task_name, variant_name))
 
     def task_variant_end(
         self,
@@ -280,6 +281,6 @@ class DqnScp(Dqn):
             for transitions in self.replay_sampler.generate_batches(128, True):
                 batch = collate(transitions)
                 self.optimizer.zero_grad()
-                # .backward() puts gradients as an attribute of each parameter
-                self.dqn_loss_fn(batch).backward()
-                # self.scp_loss_fn.sample_fisher_information(key)
+                mean_response = self.model(batch.state).mean(axis=0)
+                self.scp_loss_fn.store_synaptic_response(mean_response)
+                

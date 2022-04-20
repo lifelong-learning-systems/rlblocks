@@ -264,36 +264,35 @@ class SlicedCramerPreservation:
         self._anchors = {}
         self._num_samples = {}
         self._projections = projections
+        self._synaptic_response = {}
+        ## Initialize to zeros
+        for name, curr_param in self._model.named_parameters():
+            if not name.endswith('bias'):
+                self._synaptic_response[name] = torch.zeros(curr_param.shape[1],curr_param.shape[1]) 
 
     def __call__(self) -> torch.Tensor:
         loss = 0
         for key, anchors in self._anchors.items():
             for name, curr_param in self._model.named_parameters():
-                if not name.endswith("bias"):
-                    # Calculate the average response
-                    mean_response = curr_param.mean(axis=0)
-                    dim = mean_response.shape[0]
-
-                    # Initialize the reponse matrix
-                    synaptic_response = torch.zeros(
-                        mean_response.shape[0], mean_response.shape[0]
-                    )
-                    for l in range(self._projections):
-                        # Slice the mean response
-                        psi = torch.tensor(
-                            self.sample_unit_sphere(dim), dtype=torch.float32
-                        )
-                        unit_slice = torch.dot(psi, mean_response)
-                        # Update with the gradient of the parameters
-                        unit_slice.backward()
-                        synaptic_response += (1 / self._projections) * torch.mm(
-                            curr_param.grad.T, curr_param.grad
-                        )
-
-                    # Calculate loss with diagonal and change to anchor values
-                    syn_prod = synaptic_response.diagonal()
+                if not name.endswith('bias'):
+                    syn_prod = self._synaptic_response[name].diagonal()
                     loss += (syn_prod * (anchors[name] - curr_param).square()).sum()
         return loss
+
+    def store_synaptic_response(self, mean_response):
+                     #     # Calculate the average response
+                #     mean_response = curr_param.mean(axis=0)
+        dim = mean_response.shape[0]
+        # Initialize the reponse matrix
+        for l in range(self._projections):
+            # Slice the mean response
+            psi = torch.tensor(self.sample_unit_sphere(dim), dtype=torch.float32)
+            unit_slice = torch.dot(psi, mean_response)
+            unit_slice.backward(retain_graph=True)
+            for name, curr_param in self._model.named_parameters():
+                if not name.endswith('bias'):
+                    self._synaptic_response[name] += (1 / self._projections) * \
+                        torch.mm(curr_param.grad.T, curr_param.grad)
 
     def sample_unit_sphere(sefl, dim: int):
         u = np.random.normal(0, 1, dim)
