@@ -300,6 +300,9 @@ class Interpolate(Callable[[], float]):
         self.i += 1
         return self.start * (1.0 - t) + self.end * t
 
+    def reset(self):
+        self.i = 0
+
 
 class SoftParameterUpdate(Callable[[], None]):
     def __init__(
