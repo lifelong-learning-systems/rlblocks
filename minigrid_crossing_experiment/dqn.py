@@ -231,7 +231,6 @@ class DqnTaskMemory(Dqn):
 class DqnScp(Dqn):
     def __init__(
         self,
-        network: nn.Module,
         rng_seed: int,
         observation_space: gym.Space,
         action_space: gym.Space,
@@ -239,7 +238,6 @@ class DqnScp(Dqn):
         config_file: typing.Optional[str] = None,
     ) -> None:
         super().__init__(
-            network,
             rng_seed,
             observation_space,
             action_space,

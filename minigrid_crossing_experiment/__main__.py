@@ -20,7 +20,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import tella
-from .dqn import Dqn, DqnEwc, DqnTaskMemory
+from .dqn import Dqn, DqnEwc, DqnTaskMemory, DqnScp
 from .curriculum import (
     MiniGridCrossing,
     LavaCrossingSteCurriculum,
@@ -87,6 +87,17 @@ def train_dqn_ewc():
         curriculum_seed=CURRICULUM_SEED,
     )
 
+def train_dqn_scp():
+    tella.rl_experiment(
+        agent_factory=DqnScp,
+        curriculum_factory=MiniGridCrossing,
+        num_lifetimes=1,
+        num_parallel_envs=NUM_ENV,
+        log_dir="logs",
+        agent_seed=AGENT_SEED,
+        curriculum_seed=CURRICULUM_SEED,
+    )
+
 
 def train_dqn_task_memory():
     tella.rl_experiment(
@@ -105,3 +116,4 @@ if __name__ == "__main__":
     train_dqn()
     train_dqn_ewc()
     train_dqn_task_memory()
+    train_dqn_scp()

@@ -6,7 +6,7 @@ with open(f"{NAME}/__version__.py") as fp:
     ns = {}
     exec(fp.read(), ns)
 
-with open("README.md") as fp:
+with open("readme.md") as fp:
     long_description = fp.read()
 
 requirements = []

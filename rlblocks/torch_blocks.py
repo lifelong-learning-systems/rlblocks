@@ -267,22 +267,23 @@ class SlicedCramerPreservation:
             unit_slice.backward(retain_graph=True)
             for name, curr_param in self._model.named_parameters():
                 if not name.endswith('bias'):
+                    param_grad = curr_param.grad.squeeze()
                     self._synaptic_response[name] += (1 / self._projections) * \
-                        torch.mm(curr_param.grad.T, curr_param.grad)
+                        torch.mm(param_grad.T, param_grad)
 
     def sample_unit_sphere(sefl, dim: int):
         u = np.random.normal(0, 1, dim)
         d = np.sum(u**2) ** (0.5)
         return u / d
 
-    def set_anchors(self, key: typing.Hashable):
+    def set_anchors(self, key: Hashable):
         # This is the per-task version of EWC. The online alternative replaces
         # these values (with optional relaxation) instead of extending them
         self._anchors[key] = {
             name: layer.data.clone() for name, layer in self._model.named_parameters()
         }
 
-    def remove_anchors(self, key: typing.Hashable):
+    def remove_anchors(self, key: Hashable):
         self._anchors.pop(key, None)
         # self._fisher_information.pop(key, None)
 
