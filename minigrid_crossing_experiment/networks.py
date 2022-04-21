@@ -1,15 +1,27 @@
+"""
+Copyright © 2021-2022 The Johns Hopkins University Applied Physics Laboratory LLC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+"""
+
 import torch
 from torch import nn
 from torch.nn import functional as tnnf
-
-
-# MLP network for cartpole
-def make_mlp() -> nn.Module:
-    return nn.Sequential(
-        nn.Linear(4, 64),
-        nn.ReLU(),
-        nn.Linear(64, 2),
-    )
 
 
 class MiniGridIndexToOneHot(nn.Module):
@@ -59,36 +71,22 @@ class MiniGridCenteredFullObsIndexToOneHot(nn.Module):
 
     def forward(self, x):
         return (
-            torch.cat(
-                [
-                    tnnf.one_hot(x[..., 0].type(torch.int64), num_classes=11),
-                ],
-                dim=-1,
-            )
+            tnnf.one_hot(x[..., 0].type(torch.int64), num_classes=11)
             .permute(0, 3, 1, 2)
             .type(torch.float32)
         )
 
 
-# CNN network for minigrid
-def make_cnn() -> nn.Module:
+# Network for minigrid
+def make_minigrid_net() -> nn.Module:
     return nn.Sequential(
-        # MiniGridCenteredFullObsIndexToOneHot(),
+        MiniGridCenteredFullObsIndexToOneHot(),
+        nn.Conv2d(11, 5, (1, 1)),
+        nn.ReLU(),
         nn.Flatten(),
-        # nn.Linear(7 * 7 * 11, 128),
-        nn.Linear(7 * 7 * 3, 128),
+        nn.Linear(7 * 7 * 5, 128),
         nn.ReLU(),
         nn.Linear(128, 128),
         nn.ReLU(),
         nn.Linear(128, 3),
-        # nn.Conv2d(11, 32, (3, 3)),  # 7x7x11 -> 5x5x32
-        # nn.ReLU(),
-        # nn.Conv2d(32, 64, (3, 3)),  # 5x5x32 -> 3x3x64
-        # nn.ReLU(),
-        # nn.Conv2d(64, 128, (3, 3)),  # 3x3x64 -> 1x1x128
-        # nn.ReLU(),
-        # nn.Flatten(),
-        # nn.Linear(128, 32),
-        # nn.ReLU(),
-        # nn.Linear(32, 3),
     )
