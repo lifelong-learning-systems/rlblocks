@@ -280,8 +280,6 @@ class SlicedCramerPreservation:
         return loss
 
     def store_synaptic_response(self, mean_response):
-                     #     # Calculate the average response
-                #     mean_response = curr_param.mean(axis=0)
         dim = mean_response.shape[0]
         # Initialize the reponse matrix
         for l in range(self._projections):

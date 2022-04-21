@@ -264,7 +264,7 @@ class DqnScp(Dqn):
     ) -> None:
         if self.is_learning_allowed:
             print(f"Starting learning on {task_name} - {variant_name}")
-            #self.scp_loss_fn.remove_anchors(key=(task_name, variant_name))
+            self.scp_loss_fn.remove_anchors(key=(task_name, variant_name))
 
     def task_variant_end(
         self,
