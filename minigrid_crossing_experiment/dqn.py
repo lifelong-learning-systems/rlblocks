@@ -246,17 +246,10 @@ class DqnScp(Dqn):
         )
         self.scp_projections = 100
         self.scp_loss_fn = SlicedCramerPreservation(self.model, self.scp_projections)
-        self.scp_lambda = 10  # NOTE: original paper used 400
+        self.scp_lambda = 10  
 
-    
-    def update_model(self, n_iter: int = 4):
-        for _ in range(n_iter * self.num_envs):
-            batch = collate(self.replay_sampler.sample_batch(batch_size=64))
-            batch.reward += self.reward_signal_per_step
-            loss = self.dqn_loss_fn(batch) + self.scp_loss_fn() * self.scp_lambda
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+    def compute_loss(self, batch: TorchBatch):
+        return super().compute_loss(batch) + self.scp_loss_fn() * self.scp_lambda
 
     def task_variant_start(
         self,
@@ -274,14 +267,11 @@ class DqnScp(Dqn):
     ) -> None:
         if self.is_learning_allowed:
             print(
-                f"Finished learning on {task_name} - {variant_name} (adding associated EWC weights)"
+                f"Finished learning on {task_name} - {variant_name} (adding associated SCP weights)"
             )
             key = (task_name, variant_name)
             self.scp_loss_fn.set_anchors(key)
-            # NOTE: original paper only drew 100 batches to calculate this
             for transitions in self.replay_sampler.generate_batches(128, True):
                 batch = collate(transitions)
-                self.optimizer.zero_grad()
-                mean_response = self.model(batch.state).mean(axis=0)
-                self.scp_loss_fn.store_synaptic_response(mean_response)
+                self.scp_loss_fn.store_synaptic_response(batch.state)
                 

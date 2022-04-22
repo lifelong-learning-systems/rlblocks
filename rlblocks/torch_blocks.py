@@ -245,31 +245,27 @@ class SlicedCramerPreservation:
         self._synaptic_response = {}
         ## Initialize to zeros
         for name, curr_param in self._model.named_parameters():
-            if not name.endswith('bias'):
-                self._synaptic_response[name] = torch.zeros(curr_param.shape[1],curr_param.shape[1]) 
+            self._synaptic_response[name] = torch.zeros(curr_param.shape) 
 
     def __call__(self) -> torch.Tensor:
         loss = 0
         for key, anchors in self._anchors.items():
             for name, curr_param in self._model.named_parameters():
-                if not name.endswith('bias'):
-                    syn_prod = self._synaptic_response[name].diagonal()
-                    loss += (syn_prod * (anchors[name] - curr_param).square()).sum()
+                loss += (self._synaptic_response[name] * (anchors[name] - curr_param).square()).sum()
         return loss
 
-    def store_synaptic_response(self, mean_response):
-        dim = mean_response.shape[0]
+    def store_synaptic_response(self, batch_state):
         # Initialize the reponse matrix
         for l in range(self._projections):
+            mean_response = self._model(batch_state).mean(axis=0)
             # Slice the mean response
-            psi = torch.tensor(self.sample_unit_sphere(dim), dtype=torch.float32)
+            psi = torch.tensor(self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32)
             unit_slice = torch.dot(psi, mean_response)
+            self._model.zero_grad()
             unit_slice.backward(retain_graph=True)
             for name, curr_param in self._model.named_parameters():
-                if not name.endswith('bias'):
-                    param_grad = curr_param.grad.squeeze()
-                    self._synaptic_response[name] += (1 / self._projections) * \
-                        torch.mm(param_grad.T, param_grad)
+                self._synaptic_response[name] += (1 / self._projections) * \
+                    curr_param.grad.square()
 
     def sample_unit_sphere(self, dim: int):
         u = np.random.normal(0, 1, dim)
