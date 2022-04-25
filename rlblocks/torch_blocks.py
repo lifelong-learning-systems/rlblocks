@@ -269,7 +269,7 @@ class SlicedCramerPreservation:
 
     def sample_unit_sphere(self, dim: int):
         u = np.random.normal(0, 1, dim)
-        d = np.sum(u**2) ** (0.5)
+        d = np.linalg.norm(u)
         return u / d
 
     def set_anchors(self, key: Hashable):
