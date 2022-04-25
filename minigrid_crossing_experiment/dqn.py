@@ -274,4 +274,3 @@ class DqnScp(Dqn):
             for transitions in self.replay_sampler.generate_batches(128, True):
                 batch = collate(transitions)
                 self.scp_loss_fn.store_synaptic_response(batch.state)
-                
