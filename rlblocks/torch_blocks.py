@@ -235,8 +235,9 @@ class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
 
 
 class SlicedCramerPreservation:
-    def __init__(self, model: nn.Module, projections: int):
+    def __init__(self, model: nn.Module, projections: int, rng_seed: int):
         self._model = model
+        self.rng = np.random.default_rng(rng_seed)
 
         # Start with no anchors
         self._anchors = {}
@@ -268,7 +269,7 @@ class SlicedCramerPreservation:
                     curr_param.grad.square()
 
     def sample_unit_sphere(self, dim: int):
-        u = np.random.normal(0, 1, dim)
+        u = self.rng.normal(0, 1, dim)
         d = np.linalg.norm(u)
         return u / d
 
