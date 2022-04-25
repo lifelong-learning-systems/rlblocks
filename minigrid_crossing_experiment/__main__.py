@@ -87,6 +87,7 @@ def train_dqn_ewc():
         curriculum_seed=CURRICULUM_SEED,
     )
 
+
 def train_dqn_scp():
     tella.rl_experiment(
         agent_factory=DqnScp,
