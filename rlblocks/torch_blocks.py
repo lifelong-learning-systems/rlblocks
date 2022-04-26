@@ -244,17 +244,20 @@ class SlicedCramerPreservation:
         self._projections = projections
         self._synaptic_response = {}
         ## Initialize to zeros
-        for name, curr_param in self._model.named_parameters():
-            self._synaptic_response[name] = torch.zeros(curr_param.shape) 
-
+        
     def __call__(self) -> torch.Tensor:
         loss = 0
         for key, anchors in self._anchors.items():
             for name, curr_param in self._model.named_parameters():
-                loss += (self._synaptic_response[name] * (anchors[name] - curr_param).square()).sum()
+                loss += (self._synaptic_response[key][name] * (anchors[name] - curr_param).square()).sum()
         return loss
 
-    def store_synaptic_response(self, batch_state):
+    def store_synaptic_response(self, key, batch_state):
+        ## Initialize the Synaptic matrix per task
+        self._synaptic_response[key] = {}
+        for name, curr_param in self._model.named_parameters():
+            self._synaptic_response[key][name] = torch.zeros(curr_param.shape) 
+        
         # Initialize the reponse matrix
         for l in range(self._projections):
             mean_response = self._model(batch_state).mean(axis=0)
@@ -262,9 +265,9 @@ class SlicedCramerPreservation:
             psi = torch.tensor(self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32)
             unit_slice = torch.dot(psi, mean_response)
             self._model.zero_grad()
-            unit_slice.backward(retain_graph=True)
+            unit_slice.backward()
             for name, curr_param in self._model.named_parameters():
-                self._synaptic_response[name] += (1 / self._projections) * \
+                self._synaptic_response[key][name] += (1 / self._projections) * \
                     curr_param.grad.square()
 
     def sample_unit_sphere(self, dim: int):
