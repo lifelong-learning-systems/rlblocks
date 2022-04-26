@@ -27,6 +27,7 @@ import tella
 import torch
 from torch import nn, optim
 from rlblocks import *
+import rlblocks.replay
 from .networks import make_minigrid_net
 
 
@@ -276,3 +277,23 @@ class DqnScp(Dqn):
             for transitions in self.replay_sampler.generate_batches(128, True):
                 batch = collate(transitions)
                 self.scp_loss_fn.store_synaptic_response(key, batch.state)
+
+
+class DqnReservoir(Dqn):
+    def __init__(
+        self,
+        rng_seed: int,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        num_envs: int,
+        config_file: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(
+            rng_seed,
+            observation_space,
+            action_space,
+            num_envs,
+            config_file,
+        )
+        self.replay_buffer.priority_fn = rlblocks.replay.RandomPriority()
+>>>>>>> Stashed changes

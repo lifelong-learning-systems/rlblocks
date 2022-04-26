@@ -102,6 +102,14 @@ class OldestTransition(PriorityFn):
         return priority
 
 
+class RandomPriority(PriorityFn):
+    def __init__(self, rng_seed: int = None) -> None:
+        self.rng = np.random.default_rng(rng_seed)
+
+    def __call__(self, _transition: Transition) -> float:
+        return self.rng.random()
+
+
 class _TransitionDataset(Dataset[Transition]):
     def __init__(self) -> None:
         self.transitions = []
