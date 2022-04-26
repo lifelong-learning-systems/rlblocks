@@ -24,6 +24,7 @@ import typing
 import gym
 import numpy as np
 import tella
+import torch
 from torch import nn, optim
 from rlblocks import *
 from .networks import make_minigrid_net
@@ -52,6 +53,7 @@ class Dqn(tella.ContinualRLAgent):
         ), "This DQN agent requires discrete action spaces"
 
         self.rng = np.random.default_rng(self.rng_seed)
+        torch.manual_seed(self.rng_seed)
 
         self.replay_buffer = TransitionDatasetWithMaxCapacity(max_size=10_000)
         self.replay_sampler = UniformRandomBatchSampler(
@@ -245,7 +247,7 @@ class DqnScp(Dqn):
             config_file,
         )
         self.scp_projections = 100
-        self.scp_loss_fn = SlicedCramerPreservation(self.model, self.scp_projections)
+        self.scp_loss_fn = SlicedCramerPreservation(self.model, self.scp_projections, rng_seed=rng_seed)
         self.scp_lambda = 10  
 
     def compute_loss(self, batch: TorchBatch):
