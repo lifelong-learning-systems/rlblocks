@@ -234,6 +234,60 @@ class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
             ]
 
 
+class SlicedCramerPreservation:
+    def __init__(self, model: nn.Module, projections: int, rng_seed: int):
+        self._model = model
+        self.rng = np.random.default_rng(rng_seed)
+
+        # Start with no anchors
+        self._anchors = {}
+        self._num_samples = {}
+        self._projections = projections
+        self._synaptic_response = {}
+        ## Initialize to zeros
+        
+    def __call__(self) -> torch.Tensor:
+        loss = 0
+        for key, anchors in self._anchors.items():
+            for name, curr_param in self._model.named_parameters():
+                loss += (self._synaptic_response[key][name] * (anchors[name] - curr_param).square()).sum()
+        return loss
+
+    def store_synaptic_response(self, key, batch_state):
+        ## Initialize the Synaptic matrix per task
+        self._synaptic_response[key] = {}
+        for name, curr_param in self._model.named_parameters():
+            self._synaptic_response[key][name] = torch.zeros(curr_param.shape) 
+        
+        # Initialize the reponse matrix
+        for l in range(self._projections):
+            mean_response = self._model(batch_state).mean(axis=0)
+            # Slice the mean response
+            psi = torch.tensor(self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32)
+            unit_slice = torch.dot(psi, mean_response)
+            self._model.zero_grad()
+            unit_slice.backward()
+            for name, curr_param in self._model.named_parameters():
+                self._synaptic_response[key][name] += (1 / self._projections) * \
+                    curr_param.grad.square()
+
+    def sample_unit_sphere(self, dim: int):
+        u = self.rng.normal(0, 1, dim)
+        d = np.linalg.norm(u)
+        return u / d
+
+    def set_anchors(self, key: Hashable):
+        # This is the per-task version of EWC. The online alternative replaces
+        # these values (with optional relaxation) instead of extending them
+        self._anchors[key] = {
+            name: layer.data.clone() for name, layer in self._model.named_parameters()
+        }
+
+    def remove_anchors(self, key: Hashable):
+        self._anchors.pop(key, None)
+        # self._fisher_information.pop(key, None)
+
+
 class SampleAction(Callable[[Observation], Action]):
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn

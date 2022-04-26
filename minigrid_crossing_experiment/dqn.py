@@ -24,6 +24,7 @@ import typing
 import gym
 import numpy as np
 import tella
+import torch
 from torch import nn, optim
 from rlblocks import *
 from .networks import make_minigrid_net
@@ -52,6 +53,7 @@ class Dqn(tella.ContinualRLAgent):
         ), "This DQN agent requires discrete action spaces"
 
         self.rng = np.random.default_rng(self.rng_seed)
+        torch.manual_seed(self.rng_seed)
 
         self.replay_buffer = TransitionDatasetWithMaxCapacity(max_size=10_000)
         self.replay_sampler = UniformRandomBatchSampler(
@@ -226,3 +228,51 @@ class DqnTaskMemory(Dqn):
             )
 
         self.transition_observers[0] = self.buffers[key]
+
+
+class DqnScp(Dqn):
+    def __init__(
+        self,
+        rng_seed: int,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        num_envs: int,
+        config_file: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(
+            rng_seed,
+            observation_space,
+            action_space,
+            num_envs,
+            config_file,
+        )
+        self.scp_projections = 100
+        self.scp_loss_fn = SlicedCramerPreservation(self.model, self.scp_projections, rng_seed=rng_seed)
+        self.scp_lambda = 10  
+
+    def compute_loss(self, batch: TorchBatch):
+        return super().compute_loss(batch) + self.scp_loss_fn() * self.scp_lambda
+
+    def task_variant_start(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        if self.is_learning_allowed:
+            print(f"Starting learning on {task_name} - {variant_name}")
+            self.scp_loss_fn.remove_anchors(key=(task_name, variant_name))
+
+    def task_variant_end(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        if self.is_learning_allowed:
+            print(
+                f"Finished learning on {task_name} - {variant_name} (adding associated SCP weights)"
+            )
+            key = (task_name, variant_name)
+            self.scp_loss_fn.set_anchors(key)
+            for transitions in self.replay_sampler.generate_batches(128, True):
+                batch = collate(transitions)
+                self.scp_loss_fn.store_synaptic_response(key, batch.state)
