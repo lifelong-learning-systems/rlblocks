@@ -295,4 +295,4 @@ class DqnReservoir(Dqn):
             num_envs,
             config_file,
         )
-        self.replay_buffer.priority_fn = rlblocks.replay.RandomPriority()
+        self.replay_buffer.priority_fn = rlblocks.replay.RandomPriority(rng_seed=rng_seed)

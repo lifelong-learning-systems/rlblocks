@@ -103,6 +103,8 @@ class OldestTransition(PriorityFn):
 
 
 class RandomPriority(PriorityFn):
+    # "Global Distribution Matching" from: Selective Experience Replay for Lifelong Learning
+    #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
     def __init__(self, rng_seed: int = None) -> None:
         self.rng = np.random.default_rng(rng_seed)
 
