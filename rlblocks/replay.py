@@ -112,6 +112,28 @@ class RandomPriority(PriorityFn):
         return self.rng.random()
 
 
+class CoveragePriority(PriorityFn):
+    # "Coverage Maximization" from: Selective Experience Replay for Lifelong Learning
+    #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    #   Substituting median overlap in place of count of "near" neighbors
+    #   to avoid specifying a threshold for nearness.
+    def __init__(self, rng_seed: int = None, sample_size: int = 100) -> None:
+        self.t = 0
+        self.sample_size = sample_size
+        self.buffer = None  # Will be provided by TransitionDatasetWithMaxCapacity after init
+        self.rng = np.random.default_rng(rng_seed)
+
+    def __call__(self, _transition: Transition) -> float:
+        self.t += 1
+        sample_size = min(len(self.buffer), self.sample_size)
+        sampled_observations = self.rng.choice(self.buffer, size=sample_size, replace=False)
+        median_overlap = np.median([
+            (_transition.observation == sample.observation).sum()
+            for _priority, sample in sampled_observations
+        ])
+        return -median_overlap, self.t
+
+
 class _TransitionDataset(Dataset[Transition]):
     def __init__(self) -> None:
         self.transitions = []
