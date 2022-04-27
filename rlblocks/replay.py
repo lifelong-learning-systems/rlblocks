@@ -102,6 +102,16 @@ class OldestTransition(PriorityFn):
         return priority
 
 
+class RandomPriority(PriorityFn):
+    # "Global Distribution Matching" from: Selective Experience Replay for Lifelong Learning
+    #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    def __init__(self, rng_seed: int = None) -> None:
+        self.rng = np.random.default_rng(rng_seed)
+
+    def __call__(self, _transition: Transition) -> float:
+        return self.rng.random()
+
+
 class _TransitionDataset(Dataset[Transition]):
     def __init__(self) -> None:
         self.transitions = []
