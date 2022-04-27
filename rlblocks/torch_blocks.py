@@ -255,7 +255,8 @@ class SlicedCramerPreservation:
 
     def store_synaptic_response(self, key, batch_state):
         ## Initialize the Synaptic matrix per task
-        self._synaptic_response[key] = {}
+        if key not in self._synaptic_response.keys():
+            self._synaptic_response[key] = {}
         for name, curr_param in self._model.named_parameters():
             self._synaptic_response[key][name] = torch.zeros(curr_param.shape) 
         
