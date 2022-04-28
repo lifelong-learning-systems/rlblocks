@@ -98,7 +98,7 @@ Acknowledgments
 ----------------
 rlblocks was created by the Johns Hopkins University Applied Physics Laboratory.
 
-![APL logo](https://raw.githubusercontent.com/darpa-l2m/rlblocks/master/apl_small_logo.png)
+![apl logo](apl_small_logo.png)
 
 This software was funded by the DARPA Lifelong Learning Machines (L2M) Program.
 
