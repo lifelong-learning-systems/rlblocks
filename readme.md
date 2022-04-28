@@ -1,8 +1,6 @@
 rlblocks
 ===========
 
-![logo](apl_small_vertical_blue.png)
-
 rlblocks provides building blocks for reinforcement learning (RL) agents.
 
 Requirements
@@ -98,6 +96,10 @@ See [LICENSE](LICENSE) for license information.
 
 Acknowledgments
 ----------------
+rlblocks was created by the Johns Hopkins University Applied Physics Laboratory.
+
+![APL logo](https://raw.githubusercontent.com/darpa-l2m/rlblocks/master/apl_small_logo.png)
+
 This software was funded by the DARPA Lifelong Learning Machines (L2M) Program.
 
 The views, opinions, and/or findings expressed are those of the author(s) and should not be interpreted as representing the official views or policies of the Department of Defense or the U.S. Government.
