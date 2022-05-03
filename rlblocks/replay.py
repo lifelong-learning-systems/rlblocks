@@ -115,23 +115,69 @@ class RandomPriority(PriorityFn):
 class CoveragePriority(PriorityFn):
     # "Coverage Maximization" from: Selective Experience Replay for Lifelong Learning
     #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
-    #   Substituting median overlap in place of count of "near" neighbors
-    #   to avoid specifying a threshold for nearness.
-    def __init__(self, rng_seed: int = None, sample_size: int = 100) -> None:
+    def __init__(
+            self,
+            rng_seed: int = None,
+            distance_function: str = "L2",
+            neighbor_threshold: float = None,
+            sample_size: int = None,
+    ) -> None:
+        """
+
+        :param rng_seed:
+        :param distance_function:
+        :param neighbor_threshold:
+        :param sample_size:
+        """
+        self.buffer = None  # Required to be set after init
+        self.rng = np.random.default_rng(rng_seed)
         self.t = 0
         self.sample_size = sample_size
-        self.buffer = None  # Will be provided by TransitionDatasetWithMaxCapacity after init
-        self.rng = np.random.default_rng(rng_seed)
+        self.neighbor_threshold = neighbor_threshold
+
+        if distance_function.lower() in ("l2", "euclidean"):
+            self.distance_function = self._l2_dist
+        elif distance_function.lower() in ("l1", "manhattan"):
+            self.distance_function = self._l1_dist
+        elif distance_function.lower() in ("overlap", "hamming"):
+            self.distance_function = self._bit_dist
+        else:
+            raise NotImplementedError(f"There is no implemented distance function by the name {distance_function}.")
+
+    @staticmethod
+    def _l1_dist(a, b):
+        return np.sum(np.abs(a - b))
+
+    @staticmethod
+    def _l2_dist(a, b):
+        return np.sqrt(np.sum(np.square(a - b)))
+
+    @staticmethod
+    def _bit_dist(a, b):
+        return np.sum(a != b)
 
     def __call__(self, _transition: Transition) -> float:
         self.t += 1
-        sample_size = min(len(self.buffer), self.sample_size)
-        sampled_observations = self.rng.choice(self.buffer, size=sample_size, replace=False)
-        median_overlap = np.median([
-            (_transition.observation == sample.observation).sum()
+
+        if self.sample_size is None:
+            sampled_observations = self.buffer
+        else:
+            sample_size = min(len(self.buffer), self.sample_size)
+            sampled_observations = self.rng.choice(self.buffer, size=sample_size, replace=False)
+
+        distances = np.array([
+            self.distance_function(_transition.observation, sample.observation)
             for _priority, sample in sampled_observations
         ])
-        return -median_overlap, self.t
+
+        if self.neighbor_threshold is None:
+            # Record median distance
+            distance_metric = np.median(distances)
+        else:
+            # Record number of samples that are near neighbors (negative for priority)
+            distance_metric = -np.sum(distances < self.neighbor_threshold)
+
+        return distance_metric, self.t
 
 
 class _TransitionDataset(Dataset[Transition]):
