@@ -259,18 +259,19 @@ class SlicedCramerPreservation:
             self._synaptic_response[key] = {}
         for name, curr_param in self._model.named_parameters():
             self._synaptic_response[key][name] = torch.zeros(curr_param.shape) 
-        
+                
         # Initialize the reponse matrix
+        mean_response = self._model(batch_state).mean(axis=0)
         for l in range(self._projections):
-            mean_response = self._model(batch_state).mean(axis=0)
             # Slice the mean response
+            self._model.zero_grad()
             psi = torch.tensor(self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32)
             unit_slice = torch.dot(psi, mean_response)
-            self._model.zero_grad()
             unit_slice.backward()
             for name, curr_param in self._model.named_parameters():
                 self._synaptic_response[key][name] += (1 / self._projections) * \
                     curr_param.grad.square()
+           
 
     def sample_unit_sphere(self, dim: int):
         u = self.rng.normal(0, 1, dim)
