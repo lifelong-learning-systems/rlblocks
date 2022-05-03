@@ -124,10 +124,10 @@ class CoveragePriority(PriorityFn):
     ) -> None:
         """
 
-        :param rng_seed:
-        :param distance_function:
-        :param neighbor_threshold:
-        :param sample_size:
+        :param rng_seed: Seed value for repeatable random number generation
+        :param distance_function: Name of function for comparing sample distance
+        :param neighbor_threshold: Optional threshold for determining which samples are neighbors
+        :param sample_size: Optional limit on number of samples to compare
         """
         self.buffer = None  # Required to be set after init
         self.rng = np.random.default_rng(rng_seed)
@@ -159,11 +159,10 @@ class CoveragePriority(PriorityFn):
     def __call__(self, _transition: Transition) -> float:
         self.t += 1
 
-        if self.sample_size is None:
+        if self.sample_size is None or self.sample_size >= len(self.buffer):
             sampled_observations = self.buffer
         else:
-            sample_size = min(len(self.buffer), self.sample_size)
-            sampled_observations = self.rng.choice(self.buffer, size=sample_size, replace=False)
+            sampled_observations = self.rng.choice(self.buffer, size=self.sample_size, replace=False)
 
         distances = np.array([
             self.distance_function(_transition.observation, sample.observation)
