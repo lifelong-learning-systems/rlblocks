@@ -319,4 +319,13 @@ class DqnCoverage(Dqn):
             distance_function=lambda a, b: np.sum(a != b).item(),
             sample_size=100
         )
-        self.replay_buffer.priority_fn.buffer = self.replay_buffer.transitions
+        self.replay_buffer.priority_fn.buffer = self.replay_buffer
+
+    def task_variant_end(
+        self,
+        task_name: typing.Optional[str],
+        variant_name: typing.Optional[str],
+    ) -> None:
+        super().task_variant_end(task_name, variant_name)
+        if self.is_learning_allowed:
+            self.replay_buffer.update_priorities()
