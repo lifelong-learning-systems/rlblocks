@@ -118,14 +118,14 @@ class CoveragePriority(PriorityFn):
     def __init__(
             self,
             rng_seed: int = None,
-            distance_function: str = "L2",
+            distance_function: Callable[[np.ndarray, np.ndarray], float] = None,
             neighbor_threshold: float = None,
             sample_size: int = None,
     ) -> None:
         """
 
         :param rng_seed: Seed value for repeatable random number generation
-        :param distance_function: Name of function for comparing sample distance
+        :param distance_function: Function for comparing sample distance
         :param neighbor_threshold: Optional threshold for determining which samples are neighbors
         :param sample_size: Optional limit on number of samples to compare
         """
@@ -135,26 +135,11 @@ class CoveragePriority(PriorityFn):
         self.sample_size = sample_size
         self.neighbor_threshold = neighbor_threshold
 
-        if distance_function.lower() in ("l2", "euclidean"):
-            self.distance_function = self._l2_dist
-        elif distance_function.lower() in ("l1", "manhattan"):
-            self.distance_function = self._l1_dist
-        elif distance_function.lower() in ("overlap", "hamming"):
-            self.distance_function = self._bit_dist
-        else:
-            raise NotImplementedError(f"There is no implemented distance function by the name {distance_function}.")
-
-    @staticmethod
-    def _l1_dist(a, b):
-        return np.sum(np.abs(a - b))
-
-    @staticmethod
-    def _l2_dist(a, b):
-        return np.sqrt(np.sum(np.square(a - b)))
-
-    @staticmethod
-    def _bit_dist(a, b):
-        return np.sum(a != b)
+        self.distance_function = (
+            distance_function
+            if distance_function is not None
+            else lambda a, b: np.sqrt(np.sum(np.square(a - b))).item()
+        )
 
     def __call__(self, _transition: Transition) -> float:
         self.t += 1

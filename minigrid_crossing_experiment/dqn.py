@@ -314,5 +314,9 @@ class DqnCoverage(Dqn):
             num_envs,
             config_file,
         )
-        self.replay_buffer.priority_fn = rlblocks.replay.CoveragePriority(rng_seed=rng_seed, distance_function="hamming", sample_size=100)
+        self.replay_buffer.priority_fn = rlblocks.replay.CoveragePriority(
+            rng_seed=rng_seed,
+            distance_function=lambda a, b: np.sum(a != b).item(),
+            sample_size=100
+        )
         self.replay_buffer.priority_fn.buffer = self.replay_buffer.transitions
