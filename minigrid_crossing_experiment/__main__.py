@@ -64,69 +64,9 @@ def train_stes():
     )
 
 
-def train_dqn():
+def train_agent(agent_class):
     tella.rl_experiment(
-        agent_factory=Dqn,
-        curriculum_factory=MiniGridCrossing,
-        num_lifetimes=1,
-        num_parallel_envs=NUM_ENV,
-        log_dir="logs",
-        agent_seed=AGENT_SEED,
-        curriculum_seed=CURRICULUM_SEED,
-    )
-
-
-def train_dqn_ewc():
-    tella.rl_experiment(
-        agent_factory=DqnEwc,
-        curriculum_factory=MiniGridCrossing,
-        num_lifetimes=1,
-        num_parallel_envs=NUM_ENV,
-        log_dir="logs",
-        agent_seed=AGENT_SEED,
-        curriculum_seed=CURRICULUM_SEED,
-    )
-
-
-def train_dqn_scp():
-    tella.rl_experiment(
-        agent_factory=DqnScp,
-        curriculum_factory=MiniGridCrossing,
-        num_lifetimes=1,
-        num_parallel_envs=NUM_ENV,
-        log_dir="logs",
-        agent_seed=AGENT_SEED,
-        curriculum_seed=CURRICULUM_SEED,
-    )
-
-
-def train_dqn_task_memory():
-    tella.rl_experiment(
-        agent_factory=DqnTaskMemory,
-        curriculum_factory=MiniGridCrossing,
-        num_lifetimes=1,
-        num_parallel_envs=NUM_ENV,
-        log_dir="logs",
-        agent_seed=AGENT_SEED,
-        curriculum_seed=CURRICULUM_SEED,
-    )
-
-
-def train_dqn_reservoir_replay():
-    tella.rl_experiment(
-        agent_factory=DqnReservoir,
-        curriculum_factory=MiniGridCrossing,
-        num_lifetimes=1,
-        num_parallel_envs=NUM_ENV,
-        log_dir="logs",
-        agent_seed=AGENT_SEED,
-        curriculum_seed=CURRICULUM_SEED,
-    )
-
-
-def train_dqn_coverage_replay():
-    tella.rl_experiment(
-        agent_factory=DqnCoverage,
+        agent_factory=agent_class,
         curriculum_factory=MiniGridCrossing,
         num_lifetimes=1,
         num_parallel_envs=NUM_ENV,
@@ -137,9 +77,12 @@ def train_dqn_coverage_replay():
 
 
 if __name__ == "__main__":
-    train_stes()
-    train_dqn()
-    train_dqn_ewc()
-    train_dqn_task_memory()
-    train_dqn_scp()
-    train_dqn_reservoir_replay()
+    for agent in (
+        Dqn,
+        DqnEwc,
+        DqnTaskMemory,
+        DqnScp,
+        DqnReservoir,
+        DqnCoverage,
+    ):
+        train_agent(agent)
