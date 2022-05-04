@@ -267,7 +267,7 @@ class SlicedCramerPreservation:
             self._model.zero_grad()
             psi = torch.tensor(self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32)
             unit_slice = torch.dot(psi, mean_response)
-            unit_slice.backward()
+            unit_slice.backward(retain_graph=True)
             for name, curr_param in self._model.named_parameters():
                 self._synaptic_response[key][name] += (1 / self._projections) * \
                     curr_param.grad.square()
