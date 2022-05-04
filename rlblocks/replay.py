@@ -112,6 +112,58 @@ class RandomPriority(PriorityFn):
         return self.rng.random()
 
 
+class CoveragePriority(PriorityFn):
+    # "Coverage Maximization" from: Selective Experience Replay for Lifelong Learning
+    #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    def __init__(
+            self,
+            rng_seed: int = None,
+            distance_function: Callable[[np.ndarray, np.ndarray], float] = None,
+            neighbor_threshold: float = None,
+            sample_size: int = None,
+    ) -> None:
+        """
+
+        :param rng_seed: Seed value for repeatable random number generation
+        :param distance_function: Function for comparing sample distance
+        :param neighbor_threshold: Optional threshold for determining which samples are neighbors
+        :param sample_size: Optional limit on number of samples to compare
+        """
+        self.buffer = None  # Required to be set after init
+        self.rng = np.random.default_rng(rng_seed)
+        self.t = 0
+        self.sample_size = sample_size
+        self.neighbor_threshold = neighbor_threshold
+
+        self.distance_function = (
+            distance_function
+            if distance_function is not None
+            else lambda a, b: np.sqrt(np.sum(np.square(a - b))).item()
+        )
+
+    def __call__(self, _transition: Transition) -> float:
+        self.t += 1
+
+        if self.sample_size is None or self.sample_size >= len(self.buffer):
+            sampled_observations = self.buffer
+        else:
+            sampled_observations = self.rng.choice(self.buffer, size=self.sample_size, replace=False)
+
+        distances = np.array([
+            self.distance_function(_transition.observation, sample.observation)
+            for _priority, sample in sampled_observations
+        ])
+
+        if self.neighbor_threshold is None:
+            # Record median distance
+            distance_metric = np.median(distances)
+        else:
+            # Record number of samples that are near neighbors (negative for priority)
+            distance_metric = -np.sum(distances < self.neighbor_threshold)
+
+        return distance_metric, self.t
+
+
 class _TransitionDataset(Dataset[Transition]):
     def __init__(self) -> None:
         self.transitions = []
