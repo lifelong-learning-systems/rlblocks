@@ -129,7 +129,7 @@ class CoveragePriority(PriorityFn):
         :param neighbor_threshold: Optional threshold for determining which samples are neighbors
         :param sample_size: Optional limit on number of samples to compare
         """
-        self.buffer = None  # Required to be set after init
+        self.buffer: TransitionDatasetWithMaxCapacity = None  # Required to be set after init
         self.rng = np.random.default_rng(rng_seed)
         self.t = 0
         self.sample_size = sample_size
@@ -145,13 +145,13 @@ class CoveragePriority(PriorityFn):
         self.t += 1
 
         if self.sample_size is None or self.sample_size >= len(self.buffer):
-            sampled_observations = self.buffer
+            sampled_transitions = self.buffer.transitions
         else:
-            sampled_observations = self.rng.choice(self.buffer, size=self.sample_size, replace=False)
+            sampled_transitions = self.rng.choice(self.buffer.transitions, size=self.sample_size, replace=False)
 
         distances = np.array([
             self.distance_function(_transition.observation, sample.observation)
-            for _priority, sample in sampled_observations
+            for _priority, sample in sampled_transitions
         ])
 
         if self.neighbor_threshold is None:
@@ -216,6 +216,12 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
         # TODO does using a priority queue that reorders items affect sampling algorithms?
         priority, transition = self.transitions[index]
         return transition
+
+    def update_priorities(self):
+        new_buffer = []
+        for priority, transition in self.transitions:
+            heapq.heappush(new_buffer, (self.priority_fn(transition), transition))
+        self.transitions = new_buffer
 
 
 class TransitionDatasetWithAdvantage(_TransitionDataset, TransitionObserver):
