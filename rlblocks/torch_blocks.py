@@ -25,31 +25,7 @@ from torch import nn
 from torch.distributions import Distribution
 import numpy as np
 from .base import Action, Observation
-
-
-class TorchBatch(NamedTuple):
-    state: torch.FloatTensor
-    action: torch.Tensor
-    reward: torch.FloatTensor
-    done: torch.FloatTensor
-    next_state: torch.FloatTensor
-    advantage: Optional[torch.FloatTensor]
-
-    def torch(self) -> "TorchBatch":
-        state = torch.from_numpy(np.array(self.state)).float()
-        action = torch.from_numpy(np.array(self.action))
-        if action.dtype == torch.int32:
-            action = action.type(torch.int64)
-        if action.dtype == torch.int64:
-            action = action.unsqueeze(1)
-        reward = torch.from_numpy(np.array(self.reward)).float().unsqueeze(1)
-        done = torch.from_numpy(np.array(self.done)).float().unsqueeze(1)
-        next_state = torch.from_numpy(np.array(self.next_state)).float()
-        if self.advantage is not None:
-            advantage = torch.from_numpy(np.array(self.advantage)).float().unsqueeze(1)
-        else:
-            advantage = None
-        return TorchBatch(state, action, reward, done, next_state, advantage)
+from.replay import TorchBatch
 
 
 LogProbs = torch.Tensor
@@ -72,20 +48,20 @@ class QLoss(Callable[[TorchBatch], torch.Tensor]):
         self.criterion = criterion
 
     def _get_max_next_q(self, batch: TorchBatch) -> torch.Tensor:
-        return self.old_q_fn(batch.next_state).max(-1)[0].unsqueeze(1)
+        return self.old_q_fn(batch.next_observation).max(-1)[0].unsqueeze(1)
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
             max_next_q = self._get_max_next_q(batch)
             target_q = batch.reward + self.discount * max_next_q * (1.0 - batch.done)
-        current_q = self.q_fn(batch.state).gather(dim=1, index=batch.action)
+        current_q = self.q_fn(batch.observation).gather(dim=1, index=batch.action)
         return self.criterion(current_q, target_q)
 
 
 class DoubleQLoss(QLoss):
     def _get_max_next_q(self, batch: TorchBatch) -> torch.Tensor:
-        next_action = self.q_fn(batch.next_state).max(-1)[1].unsqueeze(1)
-        return self.old_q_fn(batch.next_state).gather(dim=-1, index=next_action)
+        next_action = self.q_fn(batch.next_observation).max(-1)[1].unsqueeze(1)
+        return self.old_q_fn(batch.next_observation).gather(dim=-1, index=next_action)
 
 
 class EntropyLoss(Callable[[TorchBatch], torch.Tensor]):
@@ -94,7 +70,7 @@ class EntropyLoss(Callable[[TorchBatch], torch.Tensor]):
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         # TODO this potentially invokes distribution_fn twice, is that different from reusing?
-        dist = self.distribution_fn(batch.state)
+        dist = self.distribution_fn(batch.observation)
         return -dist.entropy().mean()
 
 
@@ -104,7 +80,7 @@ class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
         self.distribution_fn = distribution_fn
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
-        dist = self.distribution_fn(batch.state)
+        dist = self.distribution_fn(batch.observation)
         log_prob_a = dist.log_prob(batch.action)
         return ((0.0 - log_prob_a) * batch.advantage).mean()
 
@@ -123,10 +99,10 @@ class ClippedPolicyGradientLoss:
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
-            old_log_prob_a = self.old_distribution_fn(batch.state).log_prob(
+            old_log_prob_a = self.old_distribution_fn(batch.observation).log_prob(
                 batch.action
             )
-        log_prob_a = self.distribution_fn(batch.state).log_prob(batch.action)
+        log_prob_a = self.distribution_fn(batch.observation).log_prob(batch.action)
 
         ratio = torch.exp(log_prob_a - old_log_prob_a)
         clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range)
@@ -150,9 +126,9 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
             # target_values a.k.a returns
-            target_values = batch.advantage + self.old_state_value_fn(batch.state)
+            target_values = batch.advantage + self.old_state_value_fn(batch.observation)
 
-        values = self.state_value_fn(batch.state)
+        values = self.state_value_fn(batch.observation)
         return self.criterion(values, target_values)
 
 
@@ -387,10 +363,10 @@ class HardParameterUpdate(SoftParameterUpdate):
 def batch_normalize_advantange(batch: TorchBatch) -> TorchBatch:
     assert batch.advantage is not None
     return TorchBatch(
-        batch.state,
+        batch.observation,
         batch.action,
         batch.reward,
         batch.done,
-        batch.next_state,
+        batch.next_observation,
         (batch.advantage - batch.advantage.mean()) / (1e-6 + batch.advantage.std()),
     )

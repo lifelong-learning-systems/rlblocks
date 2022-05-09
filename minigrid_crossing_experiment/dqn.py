@@ -276,7 +276,7 @@ class DqnScp(Dqn):
             self.scp_loss_fn.set_anchors(key)
             for transitions in self.replay_sampler.generate_batches(128, True):
                 batch = collate(transitions)
-                self.scp_loss_fn.store_synaptic_response(key, batch.state)
+                self.scp_loss_fn.store_synaptic_response(key, batch.observation)
 
 
 class DqnReservoir(Dqn):
