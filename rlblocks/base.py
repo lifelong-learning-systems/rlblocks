@@ -32,11 +32,11 @@ Done = bool
 
 
 class Transition(NamedTuple):
-    state: Observation
+    observation: Observation
     action: Action
     reward: float
     done: bool
-    next_state: Observation
+    next_observation: Observation
 
 
 Vectorized = Iterable

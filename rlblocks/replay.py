@@ -35,26 +35,42 @@ PriorityFn = Callable[[Transition], float]
 class TorchBatch:
     def __init__(
         self,
-        state: torch.FloatTensor,
+        observation: torch.FloatTensor,
         action: torch.Tensor,
         reward: torch.FloatTensor,
         done: torch.FloatTensor,
-        next_state: torch.FloatTensor,
+        next_observation: torch.FloatTensor,
         advantage: Optional[torch.FloatTensor],
     ):
-        self.state = state
+        self.observation = observation
         self.action = action
         self.reward = reward
         self.done = done
-        self.next_state = next_state
+        self.next_observation = next_observation
         self.advantage = advantage
+
+    def torch(self) -> "TorchBatch":
+        observation = torch.from_numpy(np.array(self.observation)).float()
+        action = torch.from_numpy(np.array(self.action))
+        if action.dtype == torch.int32:
+            action = action.type(torch.int64)
+        if action.dtype == torch.int64:
+            action = action.unsqueeze(1)
+        reward = torch.from_numpy(np.array(self.reward)).float().unsqueeze(1)
+        done = torch.from_numpy(np.array(self.done)).float().unsqueeze(1)
+        next_observation = torch.from_numpy(np.array(self.next_observation)).float()
+        if self.advantage is not None:
+            advantage = torch.from_numpy(np.array(self.advantage)).float().unsqueeze(1)
+        else:
+            advantage = None
+        return TorchBatch(observation, action, reward, done, next_observation, advantage)
 
 
 def collate(transitions: List[Transition]) -> TorchBatch:
-    states, actions, rewards, dones, next_states, *advantage = zip(*transitions)
+    observations, actions, rewards, dones, next_observations, *advantage = zip(*transitions)
     assert len(advantage) == 0 or len(advantage) == 1
 
-    states = torch.from_numpy(np.array(states)).float()
+    observations = torch.from_numpy(np.array(observations)).float()
     actions = torch.from_numpy(np.array(actions))
     if actions.dtype == torch.int32:
         actions = actions.type(torch.int64)
@@ -62,14 +78,14 @@ def collate(transitions: List[Transition]) -> TorchBatch:
         actions = actions.unsqueeze(1)
     rewards = torch.from_numpy(np.array(rewards)).float().unsqueeze(1)
     dones = torch.from_numpy(np.array(dones)).float().unsqueeze(1)
-    next_states = torch.from_numpy(np.array(next_states)).float()
+    next_observations = torch.from_numpy(np.array(next_observations)).float()
 
     if len(advantage) > 0:
         advantage = torch.from_numpy(np.array(advantage[0])).float().unsqueeze(1)
     else:
         advantage = None
 
-    return TorchBatch(states, actions, rewards, dones, next_states, advantage)
+    return TorchBatch(observations, actions, rewards, dones, next_observations, advantage)
 
 
 class TransitionWithMaxReward(PriorityFn):
@@ -249,7 +265,7 @@ class TransitionDatasetWithAdvantage(_TransitionDataset, TransitionObserver):
         for i_ep, t in enumerate(transitions):
             self.episode_transitions[i_ep].append(t)
             self.episode_rewards[i_ep].append(t.reward)
-            self.episode_values[i_ep].append(self.value_fn(t.state))
+            self.episode_values[i_ep].append(self.value_fn(t.observation))
             if t.done:
                 self._add_transitions_from_episode(i_ep, np.array([0.0]))
 
@@ -286,7 +302,7 @@ class TransitionDatasetWithAdvantage(_TransitionDataset, TransitionObserver):
                 final_step = partial_trajectory[-1]
                 self._add_transitions_from_episode(
                     i_ep,
-                    final_value=self.value_fn(final_step.next_state),
+                    final_value=self.value_fn(final_step.next_observation),
                 )
 
 
