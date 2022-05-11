@@ -31,12 +31,20 @@ Reward = float
 Done = bool
 
 
-class Transition(NamedTuple):
-    observation: Observation
-    action: Action
-    reward: float
-    done: bool
-    next_observation: Observation
+class Transition:
+    def __init__(
+        self,
+        observation: Observation,
+        action: Action,
+        reward: float,
+        done: bool,
+        next_observation: Observation,
+    ) -> None:
+        self.observation = observation
+        self.action = action
+        self.reward = reward
+        self.done = done
+        self.next_observation = next_observation
 
 
 Vectorized = Iterable
