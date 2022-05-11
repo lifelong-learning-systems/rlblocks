@@ -46,6 +46,10 @@ class Transition:
         self.done = done
         self.next_observation = next_observation
 
+    @staticmethod
+    def from_transition(t: "Transition") -> "Transition":
+        return t
+
 
 Vectorized = Iterable
 
@@ -74,9 +78,9 @@ class Timer(TransitionObserver):
         self.delay = offset
 
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
-        for _obs, _action, _reward, done, _next_obs in transitions:
+        for t in transitions:
             self.num_steps_taken += 1
-            self.num_episodes_completed += int(done)
+            self.num_episodes_completed += int(t.done)
 
     def restart(self) -> None:
         self.num_steps_taken = 0

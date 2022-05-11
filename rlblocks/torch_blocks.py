@@ -25,7 +25,7 @@ from torch import nn
 from torch.distributions import Distribution
 import numpy as np
 from .base import Action, Observation
-from.replay import TorchBatch
+from .replay import TorchBatch
 
 
 LogProbs = torch.Tensor
@@ -51,6 +51,7 @@ class QLoss(Callable[[TorchBatch], torch.Tensor]):
         return self.old_q_fn(batch.next_observation).max(-1)[0].unsqueeze(1)
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
+        assert batch.action.dim() == 2 and batch.action.shape[1] == 1
         with torch.no_grad():
             max_next_q = self._get_max_next_q(batch)
             target_q = batch.reward + self.discount * max_next_q * (1.0 - batch.done)
@@ -81,7 +82,8 @@ class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         dist = self.distribution_fn(batch.observation)
-        log_prob_a = dist.log_prob(batch.action)
+        log_prob_a = dist.log_prob(batch.action.reshape(dist.batch_shape))
+        assert log_prob_a.shape == batch.advantage.shape
         return ((0.0 - log_prob_a) * batch.advantage).mean()
 
 
@@ -99,13 +101,18 @@ class ClippedPolicyGradientLoss:
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
-            old_log_prob_a = self.old_distribution_fn(batch.observation).log_prob(
-                batch.action
+            old_dist = self.old_distribution_fn(batch.observation)
+            old_log_prob_a = old_dist.log_prob(
+                batch.action.reshape(old_dist.batch_shape)
             )
-        log_prob_a = self.distribution_fn(batch.observation).log_prob(batch.action)
+        dist = self.distribution_fn(batch.observation)
+        log_prob_a = dist.log_prob(batch.action.reshape(dist.batch_shape))
 
         ratio = torch.exp(log_prob_a - old_log_prob_a)
         clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range)
+
+        assert ratio.shape == batch.advantage.shape
+
         return (
             0.0 - torch.min(ratio * batch.advantage, clipped_ratio * batch.advantage)
         ).mean()
@@ -124,9 +131,13 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
         self.criterion = criterion
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
+        assert batch.advantage.dim() == 1
+
         with torch.no_grad():
             # target_values a.k.a returns
-            target_values = batch.advantage + self.old_state_value_fn(batch.observation)
+            target_values = batch.advantage.unsqueeze(1) + self.old_state_value_fn(
+                batch.observation
+            )
 
         values = self.state_value_fn(batch.observation)
         return self.criterion(values, target_values)
@@ -221,12 +232,15 @@ class SlicedCramerPreservation:
         self._projections = projections
         self._synaptic_response = {}
         ## Initialize to zeros
-        
+
     def __call__(self) -> torch.Tensor:
         loss = 0
         for key, anchors in self._anchors.items():
             for name, curr_param in self._model.named_parameters():
-                loss += (self._synaptic_response[key][name] * (anchors[name] - curr_param).square()).sum()
+                loss += (
+                    self._synaptic_response[key][name]
+                    * (anchors[name] - curr_param).square()
+                ).sum()
         return loss
 
     def store_synaptic_response(self, key, batch_state):
@@ -234,20 +248,22 @@ class SlicedCramerPreservation:
         if key not in self._synaptic_response.keys():
             self._synaptic_response[key] = {}
         for name, curr_param in self._model.named_parameters():
-            self._synaptic_response[key][name] = torch.zeros(curr_param.shape) 
-                
+            self._synaptic_response[key][name] = torch.zeros(curr_param.shape)
+
         # Initialize the reponse matrix
         mean_response = self._model(batch_state).mean(axis=0)
         for l in range(self._projections):
             # Slice the mean response
             self._model.zero_grad()
-            psi = torch.tensor(self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32)
+            psi = torch.tensor(
+                self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32
+            )
             unit_slice = torch.dot(psi, mean_response)
             unit_slice.backward(retain_graph=True)
             for name, curr_param in self._model.named_parameters():
-                self._synaptic_response[key][name] += (1 / self._projections) * \
-                    curr_param.grad.square()
-           
+                self._synaptic_response[key][name] += (
+                    1 / self._projections
+                ) * curr_param.grad.square()
 
     def sample_unit_sphere(self, dim: int):
         u = self.rng.normal(0, 1, dim)

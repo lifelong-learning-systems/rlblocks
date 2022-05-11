@@ -50,6 +50,11 @@ class RLBufferCallbacks(abc.ABC):
         :param item_ids: A list containing the ids of all transitions from the episode, in correct order.
         """
 
+    def on_cleared(self):
+        """
+        Called when buffer is cleared
+        """
+
 
 class RLBuffer(TransitionObserver, Generic[T]):
     """
@@ -80,11 +85,13 @@ class RLBuffer(TransitionObserver, Generic[T]):
     def __init__(
         self,
         item_cls: Type[T],
-        *callbacks: RLBufferCallbacks,
+        *,
+        callbacks: List[RLBufferCallbacks],
     ) -> None:
         self.item_cls = item_cls
         self.callbacks = callbacks
 
+        self._item_ids = []
         self._item_by_id = {}
         self._episode_by_id = {}
         self._items_by_episode_id = {}
@@ -95,12 +102,30 @@ class RLBuffer(TransitionObserver, Generic[T]):
     def __len__(self) -> int:
         return len(self._item_by_id)
 
+    def __getitem__(self, index: int) -> T:
+        return self.get_item(self._item_ids[index])
+
     def get_item(self, item_id: int) -> T:
         return self._item_by_id[item_id]
+
+    def get_items_with_indices(self, indices: List[int]) -> List[T]:
+        return [self.get_item(self._item_ids[i]) for i in indices]
+
+    def clear(self):
+        self._item_ids = []
+        self._item_by_id = {}
+        self._episode_by_id = {}
+        self._items_by_episode_id = {}
+        self._episode_ids = None
+        self._next_episode_id = None
+        self._next_id = 0
+        for cb in self.callbacks:
+            cb.on_cleared()
 
     def remove_item(self, item_id: int) -> None:
         episode_id = self._episode_by_id[item_id]
         del self._item_by_id[item_id]
+        self._item_ids.remove(item_id)
         del self._episode_by_id[item_id]
         self._items_by_episode_id[episode_id].remove(item_id)
         for cb in self.callbacks:
@@ -151,7 +176,8 @@ class RLBuffer(TransitionObserver, Generic[T]):
             episode_id = self._episode_ids[i]
 
             # store value in buffer
-            self._item_by_id[item_id] = t
+            self._item_ids.append(item_id)
+            self._item_by_id[item_id] = self.item_cls.from_transition(t)
             self._episode_by_id[item_id] = episode_id
             self._items_by_episode_id[episode_id].append(item_id)
 
@@ -170,17 +196,39 @@ class RLBuffer(TransitionObserver, Generic[T]):
 
         return super().receive_transitions(transitions)
 
+    def complete_partial_episodes(self):
+        for episode_id in self._episode_ids:
+            items = self._items_by_episode_id[episode_id]
+            if len(items) > 0:
+                for cb in self.callbacks:
+                    cb.on_episode_finished(self, items)
+
+
+class PriorityAssigner(abc.ABC):
+    @abc.abstractmethod
+    def get_priority(self, buffer: "RLBuffer[T]", item_id: int) -> float:
+        ...
+
 
 class DropLowestPriorityTransition(RLBufferCallbacks):
-    def __init__(self, max_size: int, get_priority: Callable[[T], float]) -> None:
-        self.get_priority = get_priority
+    def __init__(self, max_size: int, drop_priority: PriorityAssigner) -> None:
+        self.drop_priority = drop_priority
+        self.is_static = drop_priority.priority_is_static
         self.max_size = max_size
         self.heap: List[Tuple[int, float]] = []
 
+    def on_cleared(self):
+        self.heap = []
+
     def on_item_updated(
-        self, buffer: RLBuffer[T], item_id: int, attr_name, attr_value
+        self,
+        buffer: "RLBuffer[T]",
+        item_id: int,
+        attr_name: str,
+        old_value: float,
+        new_value: float,
     ) -> None:
-        # TODO update the priority of this item
+        # TODO update the priority of this item?
         ...
 
     def on_item_added(self, buffer: RLBuffer[T], item_id: int) -> None:
@@ -202,24 +250,13 @@ class DropLowestPriorityTransition(RLBufferCallbacks):
 class ComputeAdvantage(RLBufferCallbacks):
     def __init__(
         self,
-        value_fn: Callable[[np.ndarray], np.ndarray],
+        value_fn: Callable[[np.ndarray], float],
         gamma: float = 0.99,
         lam: float = 0.95,
     ) -> None:
         self.value_fn = value_fn
         self.gamma = gamma
         self.lam = lam
-
-    def on_item_added(self, buffer: RLBuffer[T], item_id: int) -> None:
-        ...
-
-    def on_item_updated(
-        self, buffer: RLBuffer[T], item_id: int, attr_name: str, attr_value: float
-    ) -> None:
-        ...
-
-    def on_item_removed(self, buffer: RLBuffer[T], item_id: int) -> None:
-        ...
 
     def on_episode_finished(self, buffer: RLBuffer[T], item_ids: List[int]) -> None:
         # TODO call value_fn in batch form
@@ -244,3 +281,108 @@ class ComputeAdvantage(RLBufferCallbacks):
         assert len(advantages) == len(item_ids)
 
         buffer.update_items(item_ids, {"advantage": advantages})
+
+
+class OldestTransition(PriorityAssigner):
+    """
+    This is a normal FIFO queue, it assigns priority based on age.
+
+    This is a static priority assigner, meaning priority is calculated once
+    at insertion time.
+    """
+
+    def __init__(self) -> None:
+        self.t = 0
+
+    @staticmethod
+    def priority_is_static() -> bool:
+        return True
+
+    def get_priority(self, buffer: "RLBuffer[T]", item_id: int) -> float:
+        priority = self.t
+        self.t += 1.0
+        return priority
+
+
+class GlobalDistributionMatchingPriority(PriorityAssigner):
+    """
+    "Global Distribution Matching" from: Selective Experience Replay for Lifelong Learning
+        Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+
+    This is a static priority assigner, meaning priority is calculated once
+    at insertion time.
+    """
+
+    def __init__(self, rng_seed: int = None) -> None:
+        self.rng = np.random.default_rng(rng_seed)
+
+    @staticmethod
+    def priority_is_static() -> bool:
+        return True
+
+    def get_priority(self, buffer: "RLBuffer[T]", item_id: int) -> float:
+        return self.rng.normal()
+
+
+class CoverageMaximizationPriority(PriorityAssigner):
+    """
+    "Coverage Maximization" from: Selective Experience Replay for Lifelong Learning
+        Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+
+    This is a static priority assigner, meaning priority is calculated once
+    at insertion time.
+    """
+
+    def __init__(
+        self,
+        rng_seed: int = None,
+        distance_function: Callable[[np.ndarray, np.ndarray], float] = None,
+        neighbor_threshold: float = None,
+        sample_size: int = None,
+    ) -> None:
+        """
+
+        :param rng_seed: Seed value for repeatable random number generation
+        :param distance_function: Function for comparing sample distance
+        :param neighbor_threshold: Optional threshold for determining which samples are neighbors
+        :param sample_size: Optional limit on number of samples to compare
+        """
+        self.rng = np.random.default_rng(rng_seed)
+        self.t = 0
+        self.sample_size = sample_size
+        self.neighbor_threshold = neighbor_threshold
+
+        self.distance_function = (
+            distance_function
+            if distance_function is not None
+            else lambda a, b: np.sqrt(np.sum(np.square(a - b))).item()
+        )
+
+    def get_priority(self, buffer: "RLBuffer[T]", item_id: int) -> float:
+        self.t += 1
+
+        if self.sample_size is None or self.sample_size >= len(buffer):
+            num_samples = len(buffer)
+        else:
+            num_samples = self.sample_size
+
+        item = buffer.get_item(item_id)
+        sampled_items = buffer.get_items_with_indices(
+            self.rng.choice(len(buffer), size=num_samples, replace=False)
+        )
+
+        distances = np.array(
+            [
+                self.distance_function(item.observation, sample.observation)
+                for sample in sampled_items
+            ]
+        )
+
+        if self.neighbor_threshold is None:
+            # Record median distance
+            distance_metric = np.median(distances)
+        else:
+            # Record number of samples that are near neighbors (negative for priority)
+            distance_metric = -np.sum(distances < self.neighbor_threshold)
+
+        return distance_metric, self.t
