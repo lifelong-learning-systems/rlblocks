@@ -298,6 +298,33 @@ class DqnReservoir(Dqn):
         self.replay_buffer.priority_fn = rlblocks.replay.RandomPriority(rng_seed=rng_seed)
 
 
+class DqnSurprise(Dqn):
+    def __init__(
+        self,
+        rng_seed: int,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        num_envs: int,
+        config_file: typing.Optional[str] = None,
+    ) -> None:
+        super().__init__(
+            rng_seed,
+            observation_space,
+            action_space,
+            num_envs,
+            config_file,
+        )
+        self.replay_buffer.priority_fn = rlblocks.replay.SurprisePriority(
+            q_network=self.model,
+            gamma=self.dqn_loss_fn.discount,
+        )
+        self.replay_buffer.priority_fn.buffer = self.replay_buffer
+
+    def update_model(self, n_iter: int = 4):
+        super().update_model(n_iter)
+        self.replay_buffer.update_priorities()
+
+
 class DqnCoverage(Dqn):
     def __init__(
         self,

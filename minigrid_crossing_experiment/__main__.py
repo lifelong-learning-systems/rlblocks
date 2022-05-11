@@ -20,7 +20,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import tella
-from .dqn import Dqn, DqnEwc, DqnTaskMemory, DqnScp, DqnReservoir, DqnCoverage
+from .dqn import Dqn, DqnEwc, DqnTaskMemory, DqnScp, DqnReservoir, DqnSurprise, DqnCoverage
 from .curriculum import (
     MiniGridCrossing,
     LavaCrossingSteCurriculum,
@@ -84,5 +84,6 @@ if __name__ == "__main__":
         DqnScp,
         DqnReservoir,
         DqnCoverage,
+        DqnSurprise,
     ):
         train_agent(agent)

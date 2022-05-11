@@ -128,6 +128,35 @@ class RandomPriority(PriorityFn):
         return self.rng.random()
 
 
+class SurprisePriority(PriorityFn):
+    # "Surprise" from: Selective Experience Replay for Lifelong Learning
+    #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    def __init__(
+            self,
+            q_network: torch.nn.Module,  # Use target network, or only main network for TD loss?
+            gamma: float = 0.99,
+    ) -> None:
+        self.network = q_network
+        self.gamma = gamma
+        self.t = 0
+
+    def __call__(self, _transition: Transition) -> float:
+        q_values = self.network(
+            torch.from_numpy(
+                np.stack([
+                    _transition.observation,
+                    _transition.next_observation,
+                ])
+            ).float()
+        ).detach().numpy()
+        q_before = q_values[0, _transition.action]
+        q_after = q_values[1].max()
+        td_loss = abs(_transition.reward + self.gamma * q_after - q_before)
+
+        self.t += 1
+        return td_loss, self.t
+
+
 class CoveragePriority(PriorityFn):
     # "Coverage Maximization" from: Selective Experience Replay for Lifelong Learning
     #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
