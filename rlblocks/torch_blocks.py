@@ -25,7 +25,7 @@ from torch import nn
 from torch.distributions import Distribution
 import numpy as np
 from .base import Action, Observation
-from.replay import TorchBatch
+from .replay import TorchBatch
 
 
 LogProbs = torch.Tensor
@@ -75,18 +75,31 @@ class EntropyLoss(Callable[[TorchBatch], torch.Tensor]):
 
 
 class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
-    # loss used in A2C https://github.com/deepmind/rlax/blob/66ea2d68a083933a3fb3f76a4e0935339005e1aa/rlax/_src/policy_gradients.py#L89
+    """
+    A2C from [1].
+
+    [1] Mnih, Volodymyr, et al. "Asynchronous methods for deep reinforcement learning."
+        International conference on machine learning. PMLR, 2016.
+    """
+
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         dist = self.distribution_fn(batch.observation)
-        log_prob_a = dist.log_prob(batch.action)
-        return ((0.0 - log_prob_a) * batch.advantage).mean()
+        log_prob_a = dist.log_prob(batch.action.reshape(dist.batch_space))
+        adv = batch.advantage.reshape(log_prob_a.shape)
+        return ((0.0 - log_prob_a) * adv).mean()
 
 
-class ClippedPolicyGradientLoss:
-    # PPO https://github.com/deepmind/rlax/blob/66ea2d68a083933a3fb3f76a4e0935339005e1aa/rlax/_src/policy_gradients.py#L258
+class ClippedSurrogatePolicyGradientLoss:
+    """
+    PPO Policy loss from [1].
+
+    [1] Schulman, John, et al. "Proximal policy optimization algorithms."
+        arXiv preprint arXiv:1707.06347 (2017).
+    """
+
     def __init__(
         self,
         distribution_fn: Callable[[Observation], Distribution],
@@ -99,20 +112,31 @@ class ClippedPolicyGradientLoss:
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
-            old_log_prob_a = self.old_distribution_fn(batch.observation).log_prob(
-                batch.action
+            old_dist = self.old_distribution_fn(batch.observation)
+            old_log_prob_a = old_dist.log_prob(
+                batch.action.reshape(old_dist.batch_shape)
             )
-        log_prob_a = self.distribution_fn(batch.observation).log_prob(batch.action)
+
+        dist = self.distribution_fn(batch.observation)
+        log_prob_a = dist.log_prob(batch.action.reshape(dist.batch_shape))
 
         ratio = torch.exp(log_prob_a - old_log_prob_a)
         clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range)
-        return (
-            0.0 - torch.min(ratio * batch.advantage, clipped_ratio * batch.advantage)
-        ).mean()
+
+        adv = batch.advantage.reshape(ratio.shape)
+
+        return (0.0 - torch.min(ratio * adv, clipped_ratio * adv)).mean()
 
 
 class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
-    # used in both A2C and PPO
+    """
+    This is the loss used to train the value network in both A2C (see :class:`PolicyGradientLoss`)
+    and PPO (see :class:`ClippedSurrogatePolicyGradientLoss`).
+
+    It requires advantage in the batch, which can be calculated with
+    :class:`rlblocks.replay.TransitionDatasetWithAdvantage`.
+    """
+
     def __init__(
         self,
         state_value_fn: Callable[[Observation], Value],
@@ -126,7 +150,8 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
             # target_values a.k.a returns
-            target_values = batch.advantage + self.old_state_value_fn(batch.observation)
+            old_values = self.old_state_value_fn(batch.observation)
+            target_values = batch.advantage.reshape(old_values.shape) + old_values
 
         values = self.state_value_fn(batch.observation)
         return self.criterion(values, target_values)
@@ -221,12 +246,15 @@ class SlicedCramerPreservation:
         self._projections = projections
         self._synaptic_response = {}
         ## Initialize to zeros
-        
+
     def __call__(self) -> torch.Tensor:
         loss = 0
         for key, anchors in self._anchors.items():
             for name, curr_param in self._model.named_parameters():
-                loss += (self._synaptic_response[key][name] * (anchors[name] - curr_param).square()).sum()
+                loss += (
+                    self._synaptic_response[key][name]
+                    * (anchors[name] - curr_param).square()
+                ).sum()
         return loss
 
     def store_synaptic_response(self, key, batch_state):
@@ -234,20 +262,22 @@ class SlicedCramerPreservation:
         if key not in self._synaptic_response.keys():
             self._synaptic_response[key] = {}
         for name, curr_param in self._model.named_parameters():
-            self._synaptic_response[key][name] = torch.zeros(curr_param.shape) 
-                
+            self._synaptic_response[key][name] = torch.zeros(curr_param.shape)
+
         # Initialize the reponse matrix
         mean_response = self._model(batch_state).mean(axis=0)
         for l in range(self._projections):
             # Slice the mean response
             self._model.zero_grad()
-            psi = torch.tensor(self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32)
+            psi = torch.tensor(
+                self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32
+            )
             unit_slice = torch.dot(psi, mean_response)
             unit_slice.backward(retain_graph=True)
             for name, curr_param in self._model.named_parameters():
-                self._synaptic_response[key][name] += (1 / self._projections) * \
-                    curr_param.grad.square()
-           
+                self._synaptic_response[key][name] += (
+                    1 / self._projections
+                ) * curr_param.grad.square()
 
     def sample_unit_sphere(self, dim: int):
         u = self.rng.normal(0, 1, dim)

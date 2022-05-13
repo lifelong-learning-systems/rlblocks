@@ -33,6 +33,11 @@ To update rlblocks, pull the latest changes from the git repository and upgrade:
 pip install -U .
 ```
 
+Example RL Algorithms
+---------------------
+
+1. PPO (Proximal Policy Optimization): [examples/ppo.py](examples/ppo.py). Run with `python -m examples.ppo`
+
 MiniGrid Crossing Experiment
 -----------------------------
 

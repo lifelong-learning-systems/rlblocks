@@ -42,7 +42,7 @@ from rlblocks.torch_blocks import (
     QLoss,
     DoubleQLoss,
     PolicyGradientLoss,
-    ClippedPolicyGradientLoss,
+    ClippedSurrogatePolicyGradientLoss,
     TDAdvantageLoss,
     ElasticWeightConsolidationLoss,
     OnlineElasticWeightConsolidationLoss,
