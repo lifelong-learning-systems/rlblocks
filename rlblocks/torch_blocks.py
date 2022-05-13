@@ -75,18 +75,31 @@ class EntropyLoss(Callable[[TorchBatch], torch.Tensor]):
 
 
 class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
-    # loss used in A2C https://github.com/deepmind/rlax/blob/66ea2d68a083933a3fb3f76a4e0935339005e1aa/rlax/_src/policy_gradients.py#L89
+    """
+    A2C from [1].
+
+    [1] Mnih, Volodymyr, et al. "Asynchronous methods for deep reinforcement learning."
+        International conference on machine learning. PMLR, 2016.
+    """
+
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         dist = self.distribution_fn(batch.observation)
-        log_prob_a = dist.log_prob(batch.action)
-        return ((0.0 - log_prob_a) * batch.advantage).mean()
+        log_prob_a = dist.log_prob(batch.action.reshape(dist.batch_space))
+        adv = batch.advantage.reshape(log_prob_a.shape)
+        return ((0.0 - log_prob_a) * adv).mean()
 
 
-class ClippedPolicyGradientLoss:
-    # PPO https://github.com/deepmind/rlax/blob/66ea2d68a083933a3fb3f76a4e0935339005e1aa/rlax/_src/policy_gradients.py#L258
+class ClippedSurrogatePolicyGradientLoss:
+    """
+    PPO Policy loss from [1].
+
+    [1] Schulman, John, et al. "Proximal policy optimization algorithms."
+        arXiv preprint arXiv:1707.06347 (2017).
+    """
+
     def __init__(
         self,
         distribution_fn: Callable[[Observation], Distribution],
@@ -99,20 +112,31 @@ class ClippedPolicyGradientLoss:
 
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
-            old_log_prob_a = self.old_distribution_fn(batch.observation).log_prob(
-                batch.action
+            old_dist = self.old_distribution_fn(batch.observation)
+            old_log_prob_a = old_dist.log_prob(
+                batch.action.reshape(old_dist.batch_shape)
             )
-        log_prob_a = self.distribution_fn(batch.observation).log_prob(batch.action)
+
+        dist = self.distribution_fn(batch.observation)
+        log_prob_a = dist.log_prob(batch.action.reshape(dist.batch_shape))
 
         ratio = torch.exp(log_prob_a - old_log_prob_a)
         clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_range, 1.0 + self.clip_range)
-        return (
-            0.0 - torch.min(ratio * batch.advantage, clipped_ratio * batch.advantage)
-        ).mean()
+
+        adv = batch.advantage.reshape(ratio.shape)
+
+        return (0.0 - torch.min(ratio * adv, clipped_ratio * adv)).mean()
 
 
 class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
-    # used in both A2C and PPO
+    """
+    This is the loss used to train the value network in both A2C (see :class:`PolicyGradientLoss`)
+    and PPO (see :class:`ClippedSurrogatePolicyGradientLoss`).
+
+    It requires advantage in the batch, which can be calculated with
+    :class:`rlblocks.replay.TransitionDatasetWithAdvantage`.
+    """
+
     def __init__(
         self,
         state_value_fn: Callable[[Observation], Value],
@@ -126,7 +150,8 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
     def __call__(self, batch: TorchBatch) -> torch.Tensor:
         with torch.no_grad():
             # target_values a.k.a returns
-            target_values = batch.advantage + self.old_state_value_fn(batch.observation)
+            old_values = self.old_state_value_fn(batch.observation)
+            target_values = batch.advantage.reshape(old_values.shape) + old_values
 
         values = self.state_value_fn(batch.observation)
         return self.criterion(values, target_values)
