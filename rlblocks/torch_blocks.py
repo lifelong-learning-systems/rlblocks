@@ -158,6 +158,31 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
 
 
 class ElasticWeightConsolidationLoss:
+    """
+    EWC from [1].
+
+    Example usage:
+    ```python
+    model: nn.Module = ...
+
+    ewc_loss = ElasticWeightConsolidationLoss(model)
+
+    # training:
+    loss = ... + ewc_loss()
+
+    # updating EWC anchors requires calling loss.backward() on a number of batches
+    ewc_loss.set_anchors(task="task1")
+    for batch in ...:
+        self.optimizer.zero_grad()
+        loss = ...
+        loss.backward()
+        ewc_loss.sample_fisher_information(task="task1")
+    ```
+
+    [1] Kirkpatrick, James, et al. "Overcoming catastrophic forgetting in neural networks."
+        Proceedings of the national academy of sciences 114.13 (2017): 3521-3526.
+    """
+
     def __init__(self, model: nn.Module):
         self._model = model
 
@@ -202,41 +227,34 @@ class ElasticWeightConsolidationLoss:
         self._fisher_information.pop(task, None)
 
 
-class OnlineElasticWeightConsolidationLoss(ElasticWeightConsolidationLoss):
-    def __init__(self, model: nn.Module, ewc_lambda: float, update_relaxation: float):
-        super().__init__(model, ewc_lambda)
-        self.update_relaxation = update_relaxation
-
-    def add_anchors(self):
-        # Importance here is computed from parameter gradients
-        # Before calling this method, the user must compute those gradients using something like:
-        #   `loss_fn(batch_data).backward()`
-        importance = [
-            layer.grad.detach().clone() ** 2
-            if layer.grad is not None
-            else torch.zeros_like(layer)
-            for layer in self._model.parameters()
-        ]
-
-        if not self._anchor_values:
-            self._anchor_values = [
-                layer.detach().clone() for layer in self._model.parameters()
-            ]
-            self._importance = importance
-        else:
-            self._anchor_values = [
-                old * self.update_relaxation
-                + new.detach().clone() * (1 - self.update_relaxation)
-                for old, new in zip(self._anchor_values, self._model.parameters())
-            ]
-            self._importance = [
-                old * self.update_relaxation + new * (1 - self.update_relaxation)
-                for old, new in zip(self._importance, importance)
-            ]
-
-
 class SlicedCramerPreservation:
-    def __init__(self, model: nn.Module, projections: int, rng_seed: int):
+    """
+    SCP from [1].
+
+    Example usage:
+    ```python
+    model: nn.Module = ...
+
+    scp_loss = SlicedCramerPreservation(model, projections=10)
+
+    # training:
+    loss = ... + scp_loss()
+
+    # updating EWC anchors requires calling loss.backward() on a number of batches
+    scp_loss.set_anchors(task="task1")
+    for batch in ...:
+        self.optimizer.zero_grad()
+        output = model(batch.x)
+        loss = ...
+        loss.backward()
+        scp_loss.store_synaptic_response(task="task1", batch.x)
+    ```
+
+    [1] Kolouri, Soheil, et al. "Sliced cramer synaptic consolidation for preserving deeply learned representations."
+        International Conference on Learning Representations. 2019.
+    """
+
+    def __init__(self, model: nn.Module, projections: int, rng_seed: int = None):
         self._model = model
         self.rng = np.random.default_rng(rng_seed)
 
@@ -245,7 +263,6 @@ class SlicedCramerPreservation:
         self._num_samples = {}
         self._projections = projections
         self._synaptic_response = {}
-        ## Initialize to zeros
 
     def __call__(self) -> torch.Tensor:
         loss = 0
@@ -270,7 +287,7 @@ class SlicedCramerPreservation:
             # Slice the mean response
             self._model.zero_grad()
             psi = torch.tensor(
-                self.sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32
+                self._sample_unit_sphere(mean_response.shape[0]), dtype=torch.float32
             )
             unit_slice = torch.dot(psi, mean_response)
             unit_slice.backward(retain_graph=True)
@@ -279,21 +296,18 @@ class SlicedCramerPreservation:
                     1 / self._projections
                 ) * curr_param.grad.square()
 
-    def sample_unit_sphere(self, dim: int):
+    def _sample_unit_sphere(self, dim: int):
         u = self.rng.normal(0, 1, dim)
         d = np.linalg.norm(u)
         return u / d
 
     def set_anchors(self, key: Hashable):
-        # This is the per-task version of EWC. The online alternative replaces
-        # these values (with optional relaxation) instead of extending them
         self._anchors[key] = {
             name: layer.data.clone() for name, layer in self._model.named_parameters()
         }
 
     def remove_anchors(self, key: Hashable):
         self._anchors.pop(key, None)
-        # self._fisher_information.pop(key, None)
 
 
 class SampleAction(Callable[[Observation], Action]):
