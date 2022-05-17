@@ -39,14 +39,7 @@ from rlblocks.base import (
 from rlblocks.torch_blocks import (
     PolyakParameterUpdate,
     TorchBatch,
-    QLoss,
-    DoubleQLoss,
-    PolicyGradientLoss,
-    ClippedSurrogatePolicyGradientLoss,
-    TDAdvantageLoss,
-    ElasticWeightConsolidationLoss,
-    OnlineElasticWeightConsolidationLoss,
-    SlicedCramerPreservation,
+    collate,
     ArgmaxAction,
     ChooseBetween,
     Interpolate,
@@ -57,10 +50,18 @@ from rlblocks.torch_blocks import (
     NumpyToTorchConverter,
     SampleAction,
 )
-from rlblocks.replay import (
+from rlblocks.loss_functions import (
     TorchBatch,
+    QLoss,
+    DoubleQLoss,
+    PolicyGradientLoss,
+    ClippedSurrogatePolicyGradientLoss,
+    TDAdvantageLoss,
+    ElasticWeightConsolidationLoss,
+    SlicedCramerPreservation,
+)
+from rlblocks.replay import (
     PriorityFn,
-    collate,
     TransitionDatasetWithMaxCapacity,
     TransitionDatasetWithAdvantage,
     BatchGenerator,
