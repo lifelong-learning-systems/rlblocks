@@ -60,10 +60,14 @@ The base agent is an implementation of Deep Q Learning (DQN). It uses the follow
 4. Epsilon greedy using `Interpolate`, `ChooseBetween`, `NumpyToTorchConverter`, and `ArgmaxAction`
 5. `PeriodicCallbacks` to coordinate all of the above.
 
+![dqn](images/Dqn-MiniGridCrossing.png)
+
 #### DQN + Elastic Weight Consolidation (EWC)
 
 The first continual RL agent is the baseline agent
 with the `EWC` component added in.
+
+![dqnewc](images/DqnEwc-MiniGridCrossing.png)
 
 #### DQN + Task Specific Memory
 
@@ -71,17 +75,22 @@ The second continual RL agent is the DQN agent, but the replay buffer stores dat
 
 This utilizes the `MetaBatchSampler` component to sample data from multiple buffers.
 
+![dqntaskmem](images/DqnTaskMemory-MiniGridCrossing.png)
+
 #### DQN + Sliced Cramer Preservation
 
 The baseline agent combined with the `SCP` component. This is very similar to the EWC agent.
+
+![dqnscp](images/DqnScp-MiniGridCrossing.png)
 
 #### DQN + Reservoir Sampling
 
 The baseline agent, but instead of the replay buffer using a FIFO queue, it drops data based on Random priority using the `RandomPriority` component.
 
+![dqnreservoir](images/DqnReservoir-MiniGridCrossing.png)
+
 #### DQN + Coverage
 
 The baseline agent, but instead of the replay buffer using a FIFO queue, it drops data based on state coverage using the `CoveragePriority` component.
 
-## Results
-
+![dqncoverage](images/DqnCoverage-MiniGridCrossing.png)
