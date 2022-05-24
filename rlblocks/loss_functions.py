@@ -76,10 +76,9 @@ class EntropyLoss(Callable[[TorchBatch], torch.Tensor]):
 
 class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
     """
-    A2C from [1].
-
-    [1] Mnih, Volodymyr, et al. "Asynchronous methods for deep reinforcement learning."
-        International conference on machine learning. PMLR, 2016.
+    A2C from:
+    `Mnih, Volodymyr, et al. "Asynchronous methods for deep reinforcement learning."
+    International conference on machine learning. PMLR, 2016.`
     """
 
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
@@ -94,10 +93,9 @@ class PolicyGradientLoss(Callable[[TorchBatch], torch.Tensor]):
 
 class ClippedSurrogatePolicyGradientLoss:
     """
-    PPO Policy loss from [1].
-
-    [1] Schulman, John, et al. "Proximal policy optimization algorithms."
-        arXiv preprint arXiv:1707.06347 (2017).
+    PPO Policy loss from:
+    `Schulman, John, et al. "Proximal policy optimization algorithms."
+    arXiv preprint arXiv:1707.06347 (2017).`
     """
 
     def __init__(
@@ -134,7 +132,7 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
     and PPO (see :class:`ClippedSurrogatePolicyGradientLoss`).
 
     It requires advantage in the batch, which can be calculated with
-    :class:`rlblocks.replay.TransitionDatasetWithAdvantage`.
+    :class:`rlblocks.TransitionDatasetWithAdvantage`.
     """
 
     def __init__(
@@ -159,28 +157,27 @@ class TDAdvantageLoss(Callable[[TorchBatch], torch.Tensor]):
 
 class ElasticWeightConsolidationLoss:
     """
-    EWC from [1].
+    EWC from:
+    `Kirkpatrick, James, et al. "Overcoming catastrophic forgetting in neural networks."
+    Proceedings of the national academy of sciences 114.13 (2017): 3521-3526.`
 
-    Example usage:
-    ```python
-    model: nn.Module = ...
+    Example usage::
 
-    ewc_loss = ElasticWeightConsolidationLoss(model)
+        model: nn.Module = ...
 
-    # training:
-    loss = ... + ewc_loss()
+        ewc_loss = ElasticWeightConsolidationLoss(model)
 
-    # updating EWC anchors requires calling loss.backward() on a number of batches
-    ewc_loss.set_anchors(task="task1")
-    for batch in ...:
-        self.optimizer.zero_grad()
-        loss = ...
-        loss.backward()
-        ewc_loss.sample_fisher_information(task="task1")
-    ```
+        # training:
+        loss = ... + ewc_loss()
 
-    [1] Kirkpatrick, James, et al. "Overcoming catastrophic forgetting in neural networks."
-        Proceedings of the national academy of sciences 114.13 (2017): 3521-3526.
+        # updating EWC anchors requires calling loss.backward() on a number of batches
+        ewc_loss.set_anchors(task="task1")
+        for batch in ...:
+            self.optimizer.zero_grad()
+            loss = ...
+            loss.backward()
+            ewc_loss.sample_fisher_information(task="task1")
+
     """
 
     def __init__(self, model: nn.Module):
@@ -229,29 +226,28 @@ class ElasticWeightConsolidationLoss:
 
 class SlicedCramerPreservation:
     """
-    SCP from [1].
+    SCP from:
+    `Kolouri, Soheil, et al. "Sliced cramer synaptic consolidation for preserving deeply learned representations."
+    International Conference on Learning Representations. 2019.`
 
-    Example usage:
-    ```python
-    model: nn.Module = ...
+    Example usage::
 
-    scp_loss = SlicedCramerPreservation(model, projections=10)
+        model: nn.Module = ...
 
-    # training:
-    loss = ... + scp_loss()
+        scp_loss = SlicedCramerPreservation(model, projections=10)
 
-    # updating EWC anchors requires calling loss.backward() on a number of batches
-    scp_loss.set_anchors(task="task1")
-    for batch in ...:
-        self.optimizer.zero_grad()
-        output = model(batch.x)
-        loss = ...
-        loss.backward()
-        scp_loss.store_synaptic_response(task="task1", batch.x)
-    ```
+        # training:
+        loss = ... + scp_loss()
 
-    [1] Kolouri, Soheil, et al. "Sliced cramer synaptic consolidation for preserving deeply learned representations."
-        International Conference on Learning Representations. 2019.
+        # updating EWC anchors requires calling loss.backward() on a number of batches
+        scp_loss.set_anchors(task="task1")
+        for batch in ...:
+            self.optimizer.zero_grad()
+            output = model(batch.x)
+            loss = ...
+            loss.backward()
+            scp_loss.store_synaptic_response(task="task1", batch.x)
+
     """
 
     def __init__(self, model: nn.Module, projections: int, rng_seed: int = None):

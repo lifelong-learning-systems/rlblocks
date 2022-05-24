@@ -34,7 +34,7 @@ class PriorityFn(abc.ABC):
     """
     Abstract class for mapping from transition data to buffer priority for that sample
 
-    For use with TransitionDatasetWithMaxCapacity
+    For use with :class:`TransitionDatasetWithMaxCapacity`
     """
     @abc.abstractmethod
     def __call__(self, transition: Transition) -> float:
@@ -90,8 +90,9 @@ class RandomPriority(PriorityFn):
     """
     PriorityFn to drop random sample in buffer
 
-    "Global Distribution Matching" from: Selective Experience Replay for Lifelong Learning
-      Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    "Global Distribution Matching" from:
+    `Selective Experience Replay for Lifelong Learning
+    Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269`
     """
     def __init__(self, rng_seed: int = None) -> None:
         self.rng = np.random.default_rng(rng_seed)
@@ -104,8 +105,9 @@ class CoveragePriority(PriorityFn):
     """
     PriorityFn to drop sample in buffer which has most neighbors in observation space
 
-    "Coverage Maximization" from: Selective Experience Replay for Lifelong Learning
-      Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    "Coverage Maximization" from:
+    `Selective Experience Replay for Lifelong Learning
+    Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269`
     """
     def __init__(
             self,
