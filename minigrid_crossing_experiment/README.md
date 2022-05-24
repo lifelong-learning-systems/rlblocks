@@ -16,11 +16,16 @@ The MiniGridCrossing curriculum contains three environments all generally
 related to crossing the grid world:
 
 1. [Lava Crossing](https://github.com/maximecb/gym-minigrid#lava-crossing-environment)
-    ![lava crossing](images/env%20-%20lava.png)
+
+<img src="images/env%20-%20lava.png" width="320">
+
 2. [Empty Crossing](https://github.com/maximecb/gym-minigrid#empty-environment)
-    ![empty crossing](images/env%20-%20empty.png)
+
+<img src="images/env%20-%20empty.png" width="320">
+
 3. [Dynamic Obstacles](https://github.com/maximecb/gym-minigrid#dynamic-obstacles-environment)
-    ![dyn obstacles](images/env%20-%20obstacle.png)
+
+<img src="images/env%20-%20obstacle.png" width="320">
 
 Each environment is sized as a 5x5 grid, meaning there is a 3x3 area for
 the agent to walk in.
