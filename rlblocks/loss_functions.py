@@ -59,6 +59,13 @@ class QLoss(Callable[[TorchBatch], torch.Tensor]):
 
 
 class DoubleQLoss(QLoss):
+    """
+    Double Q Learning from:
+    `Van Hasselt, Hado, Arthur Guez, and David Silver.
+    "Deep reinforcement learning with double q-learning."
+    Proceedings of the AAAI conference on artificial intelligence.
+    Vol. 30. No. 1. 2016.`
+    """
     def _get_max_next_q(self, batch: TorchBatch) -> torch.Tensor:
         next_action = self.q_fn(batch.next_observation).max(-1)[1].unsqueeze(1)
         return self.old_q_fn(batch.next_observation).gather(dim=-1, index=next_action)
