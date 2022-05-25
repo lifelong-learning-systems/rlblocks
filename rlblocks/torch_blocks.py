@@ -89,6 +89,9 @@ def collate(transitions: List[Transition]) -> TorchBatch:
 
 
 class NumpyToTorchConverter(Callable[[np.ndarray], np.ndarray]):
+    """
+    Wraps around a Callable that takes torch tensors, and converts numpy arrays to torch tensors before and after calling the function.
+    """
     def __init__(self, torch_fn: Callable[[torch.Tensor], torch.Tensor]) -> None:
         self.torch_fn = torch_fn
 
@@ -101,6 +104,9 @@ class NumpyToTorchConverter(Callable[[np.ndarray], np.ndarray]):
 
 
 class SampleAction(Callable[[Observation], Action]):
+    """
+    Calls :meth:`Distribution.sample()` on a pytorch Distribution produced from the callable you pass in.
+    """
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
 
@@ -109,6 +115,9 @@ class SampleAction(Callable[[Observation], Action]):
 
 
 class ArgmaxAction(Callable[[Observation], Action]):
+    """
+    Calls .argmax(-1) on the result of the callable you pass in. You can use this to get the highest valued action for a categorical model.
+    """
     def __init__(self, score_fn: Callable[[Observation], torch.Tensor]) -> None:
         self.score_fn = score_fn
 

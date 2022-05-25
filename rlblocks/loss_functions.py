@@ -76,6 +76,9 @@ class DoubleQLoss(QLoss):
 
 
 class EntropyLoss(Callable[[TorchBatch], torch.Tensor]):
+    """
+    Maximizes entropy of the distribution function you pass in. This is often used with on policy methods such as PPO and A2C.
+    """
     def __init__(self, distribution_fn: Callable[[Observation], Distribution]) -> None:
         self.distribution_fn = distribution_fn
 
