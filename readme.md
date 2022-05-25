@@ -3,6 +3,21 @@ rlblocks
 
 rlblocks provides building blocks for reinforcement learning (RL) agents.
 
+
+### Example RL Algorithms
+
+1. PPO (Proximal Policy Optimization) in CartPole-v1: [examples/ppo.py](examples/ppo.py). Run with `python -m examples.ppo`
+2. DQN (Deep Q Learning) in CartPole-v1: [examples/dqn.py](examples/dqn.py). Run with `python -m examples.dqn`
+
+### MiniGrid Crossing Experiment
+
+We provide an experiment in the MiniGrid environment called MiniGrid Crossing.
+See [minigrid_crossing_experiment](minigrid_crossing_experiment) for more details and plots!
+
+To run the experiment run:
+
+`python -m minigrid_crossing_experiment`
+
 Requirements
 ----------------
 * Python 3.7 or greater
@@ -33,25 +48,6 @@ To update rlblocks, pull the latest changes from the git repository and upgrade:
 pip install -U .
 ```
 
-Example RL Algorithms
----------------------
-
-1. PPO (Proximal Policy Optimization) in CartPole-v1: [examples/ppo.py](examples/ppo.py). Run with `python -m examples.ppo`
-2. DQN (Deep Q Learning) in CartPole-v1: [examples/dqn.py](examples/dqn.py). Run with `python -m examples.dqn`
-
-MiniGrid Crossing Experiment
------------------------------
-
-We provide an experiment in the MiniGrid environment called MiniGrid Crossing.
-
-The curriculum is built using the `tella` package.
-
-Right now we provide a baseline DQN agent, the baseline and EWC, and the baseline
-with task specific replay buffers.
-
-To run the experiment run:
-
-`python -m minigrid_crossing_experiment`
 
 Bug Reports and Feature Requests
 ---------------------------------
