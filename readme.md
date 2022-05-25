@@ -36,7 +36,8 @@ pip install -U .
 Example RL Algorithms
 ---------------------
 
-1. PPO (Proximal Policy Optimization): [examples/ppo.py](examples/ppo.py). Run with `python -m examples.ppo`
+1. PPO (Proximal Policy Optimization) in CartPole-v1: [examples/ppo.py](examples/ppo.py). Run with `python -m examples.ppo`
+2. DQN (Deep Q Learning) in CartPole-v1: [examples/dqn.py](examples/dqn.py). Run with `python -m examples.dqn`
 
 MiniGrid Crossing Experiment
 -----------------------------
