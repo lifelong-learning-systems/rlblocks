@@ -2,6 +2,8 @@
 
 A continual reinforcement learning experiment in [gym-minigrid](https://github.com/maximecb/gym-minigrid).
 
+This experiment is provided as a demo of all the features rlblocks provides.
+
 ## Running the experiment
 
 ```bash
