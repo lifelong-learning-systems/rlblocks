@@ -34,7 +34,11 @@ QValues = torch.Tensor
 
 
 class QLoss(Callable[[TorchBatch], torch.Tensor]):
-    # used in DQN
+    """
+    DQN from:
+    `Mnih, Volodymyr, et al. "Playing atari with deep reinforcement learning."
+    arXiv preprint arXiv:1312.5602 (2013).`
+    """
     def __init__(
         self,
         q_fn: Callable[[Observation], QValues],
