@@ -23,93 +23,28 @@ import abc
 from typing import *
 import heapq
 import math
-import torch
 from torch.utils.data import Dataset
 import numpy as np
 import scipy
 import scipy.signal
 from .base import Transition, TransitionObserver, Vectorized
 
-PriorityFn = Callable[[Transition], float]
 
+class PriorityFn(abc.ABC):
+    """
+    Abstract class for mapping from transition data to buffer priority for that sample
 
-class TorchBatch:
-    def __init__(
-        self,
-        observation: torch.FloatTensor,
-        action: torch.Tensor,
-        reward: torch.FloatTensor,
-        done: torch.FloatTensor,
-        next_observation: torch.FloatTensor,
-        advantage: Optional[torch.FloatTensor],
-    ):
-        self.observation = observation
-        self.action = action
-        self.reward = reward
-        self.done = done
-        self.next_observation = next_observation
-        self.advantage = advantage
-
-    def torch(self) -> "TorchBatch":
-        observation = torch.from_numpy(np.array(self.observation)).float()
-        action = torch.from_numpy(np.array(self.action))
-        if action.dtype == torch.int32:
-            action = action.type(torch.int64)
-        if action.dtype == torch.int64:
-            action = action.unsqueeze(1)
-        reward = torch.from_numpy(np.array(self.reward)).float().unsqueeze(1)
-        done = torch.from_numpy(np.array(self.done)).float().unsqueeze(1)
-        next_observation = torch.from_numpy(np.array(self.next_observation)).float()
-        if self.advantage is not None:
-            advantage = torch.from_numpy(np.array(self.advantage)).float().unsqueeze(1)
-        else:
-            advantage = None
-        return TorchBatch(observation, action, reward, done, next_observation, advantage)
-
-
-def collate(transitions: List[Transition]) -> TorchBatch:
-    observations, actions, rewards, dones, next_observations, *advantage = zip(*transitions)
-    assert len(advantage) == 0 or len(advantage) == 1
-
-    observations = torch.from_numpy(np.array(observations)).float()
-    actions = torch.from_numpy(np.array(actions))
-    if actions.dtype == torch.int32:
-        actions = actions.type(torch.int64)
-    if actions.dtype == torch.int64:
-        actions = actions.unsqueeze(1)
-    rewards = torch.from_numpy(np.array(rewards)).float().unsqueeze(1)
-    dones = torch.from_numpy(np.array(dones)).float().unsqueeze(1)
-    next_observations = torch.from_numpy(np.array(next_observations)).float()
-
-    if len(advantage) > 0:
-        advantage = torch.from_numpy(np.array(advantage[0])).float().unsqueeze(1)
-    else:
-        advantage = None
-
-    return TorchBatch(observations, actions, rewards, dones, next_observations, advantage)
-
-
-class TransitionWithMaxReward(PriorityFn):
+    For use with :class:`TransitionDatasetWithMaxCapacity`
+    """
+    @abc.abstractmethod
     def __call__(self, transition: Transition) -> float:
-        return -transition.reward
-
-
-class TransitionWithMinReward(PriorityFn):
-    def __call__(self, transition: Transition) -> float:
-        return transition.reward
-
-
-class TransitionWithMaxAbsReward(PriorityFn):
-    def __call__(self, transition: Transition) -> float:
-        return -abs(transition.reward)
-
-
-class TransitionWithMinAbsReward(PriorityFn):
-    def __call__(self, transition: Transition) -> float:
-        return abs(transition.reward)
+        pass
 
 
 class OldestTransition(PriorityFn):
+    """
+    PriorityFn to drop oldest sample in buffer (FIFO)
+    """
     def __init__(self) -> None:
         self.t = 0
 
@@ -119,9 +54,46 @@ class OldestTransition(PriorityFn):
         return priority
 
 
+class TransitionWithMaxReward(PriorityFn):
+    """
+    PriorityFn to drop highest reward sample in buffer
+    """
+    def __call__(self, transition: Transition) -> float:
+        return -transition.reward
+
+
+class TransitionWithMinReward(PriorityFn):
+    """
+    PriorityFn to drop lowest reward sample in buffer
+    """
+    def __call__(self, transition: Transition) -> float:
+        return transition.reward
+
+
+class TransitionWithMaxAbsReward(PriorityFn):
+    """
+    PriorityFn to drop highest abs(reward) sample in buffer
+    """
+    def __call__(self, transition: Transition) -> float:
+        return -abs(transition.reward)
+
+
+class TransitionWithMinAbsReward(PriorityFn):
+    """
+    PriorityFn to drop lowest abs(reward) sample in buffer
+    """
+    def __call__(self, transition: Transition) -> float:
+        return abs(transition.reward)
+
+
 class RandomPriority(PriorityFn):
-    # "Global Distribution Matching" from: Selective Experience Replay for Lifelong Learning
-    #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    """
+    PriorityFn to drop random sample in buffer
+
+    "Global Distribution Matching" from:
+    `Selective Experience Replay for Lifelong Learning
+    Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269`
+    """
     def __init__(self, rng_seed: int = None) -> None:
         self.rng = np.random.default_rng(rng_seed)
 
@@ -130,8 +102,13 @@ class RandomPriority(PriorityFn):
 
 
 class CoveragePriority(PriorityFn):
-    # "Coverage Maximization" from: Selective Experience Replay for Lifelong Learning
-    #   Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269
+    """
+    PriorityFn to drop sample in buffer which has most neighbors in observation space
+
+    "Coverage Maximization" from:
+    `Selective Experience Replay for Lifelong Learning
+    Isele and Cosgun, 2018. https://arxiv.org/abs/1802.10269`
+    """
     def __init__(
             self,
             rng_seed: int = None,
@@ -182,6 +159,9 @@ class CoveragePriority(PriorityFn):
 
 
 class _TransitionDataset(Dataset[Transition]):
+    """
+    Internal class defining the core methods for RL datasets
+    """
     def __init__(self) -> None:
         self.transitions = []
 
@@ -192,7 +172,6 @@ class _TransitionDataset(Dataset[Transition]):
         self.transition_ids.pop(transition_id)
 
     def __getitem__(self, index: int) -> Transition:
-        # TODO does using a priority queue that reorders items affect sampling algorithms?
         return self.transitions[index]
 
     def __len__(self) -> int:
@@ -206,6 +185,11 @@ class _TransitionDataset(Dataset[Transition]):
 
 
 class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
+    """
+    Replay buffer which stores observed data from the environment, discarding the lowest priority samples when full
+
+    Uses heapq library to store pairs of (Priority, Sample) for efficiency.
+    """
     def __init__(self, max_size: int, drop: PriorityFn = OldestTransition()) -> None:
         super().__init__()
         self.max_size = max_size
@@ -230,7 +214,6 @@ class TransitionDatasetWithMaxCapacity(_TransitionDataset, TransitionObserver):
     def __getitem__(self, index: int) -> Transition:
         if isinstance(index, slice):
             return [t for p, t in self.transitions[index]]
-        # TODO does using a priority queue that reorders items affect sampling algorithms?
         priority, transition = self.transitions[index]
         return transition
 
@@ -311,6 +294,9 @@ BatchGenerator = Generator[List[Transition], None, None]
 
 
 class BatchSampler(abc.ABC):
+    """
+    Abstract class defining methods for sampler to draw from buffer
+    """
     @abc.abstractmethod
     def sample_batch(self, batch_size: int) -> List[Transition]:
         ...
@@ -321,6 +307,9 @@ class BatchSampler(abc.ABC):
 
 
 class UniformRandomBatchSampler(BatchSampler):
+    """
+    Sampler to draw data from buffer with equal probability
+    """
     def __init__(self, source: Dataset[Transition], seed: int = 0) -> None:
         self.source = source
         self.rng = np.random.default_rng(seed)
@@ -346,6 +335,9 @@ class UniformRandomBatchSampler(BatchSampler):
 
 
 class MetaBatchSampler(BatchSampler):
+    """
+    Sampler to draw from multiple buffers with preset probabilities
+    """
     # TODO what is the most clear API for this? tuples? dicts? something else?
     def __init__(self, *samplers_and_pcts: Tuple[BatchSampler, float]) -> None:
         _samplers, pcts = list(zip(*samplers_and_pcts))

@@ -43,6 +43,9 @@ Vectorized = Iterable
 
 
 class TransitionObserver(abc.ABC):
+    """
+    Components which observe the environment can inherit from this class to standardize passing data
+    """
     @abc.abstractmethod
     def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
         pass
@@ -58,6 +61,9 @@ Episodes = RLTimeUnit.EPISODES
 
 
 class Timer(TransitionObserver):
+    """
+    Count number of steps or episodes completed. Compare to threshold with `.is_finished` method.
+    """
     def __init__(self, n: int, unit: RLTimeUnit, *, offset: int = 0) -> None:
         self.n = n
         self.unit = unit
@@ -81,20 +87,31 @@ class Timer(TransitionObserver):
         )
         return value >= self.n + self.delay
 
-    def __eq__(self, __o: object) -> bool:
-        if not isinstance(__o, Timer):
-            return False
-        return self.n == __o.n and self.unit == __o.unit
-
-    def __hash__(self) -> int:
-        return hash((self.n, self.unit))
-
 
 Duration = Timer
 Every = Timer
 
 
+class PeriodicCallbacks(TransitionObserver):
+    """
+    Pair Timer instances with callback functions to run those callbacks on each timer completion.
+    """
+    def __init__(self, *callback_by_timer: Tuple[Timer, Callable[[], None]]) -> None:
+        super().__init__()
+        self.callback_by_timer = callback_by_timer
+
+    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
+        for timer, callback in self.callback_by_timer:
+            timer.receive_transitions(transitions)
+            if timer.is_finished():
+                callback()
+                timer.restart()
+
+
 class RewardTracker(TransitionObserver):
+    """
+    Tracks total reward received for high-level performance monitoring
+    """
     def __init__(self) -> None:
         super().__init__()
         self.total_reward = 0.0
@@ -129,6 +146,9 @@ class RewardTracker(TransitionObserver):
 
 
 class ActionTracker(TransitionObserver):
+    """
+    Tracks actions taken for high-level performance monitoring
+    """
     def __init__(self) -> None:
         super().__init__()
         self.action_count = collections.Counter()
@@ -153,19 +173,6 @@ class ActionTracker(TransitionObserver):
         )
 
 
-class PeriodicCallbacks(TransitionObserver):
-    def __init__(self, *callback_by_timer: Tuple[Timer, Callable[[], None]]) -> None:
-        super().__init__()
-        self.callback_by_timer = callback_by_timer
-
-    def receive_transitions(self, transitions: Vectorized[Transition]) -> None:
-        for timer, callback in self.callback_by_timer:
-            timer.receive_transitions(transitions)
-            if timer.is_finished():
-                callback()
-                timer.restart()
-
-
 def run_env_interaction(
     *,
     env_fn: Callable[[], gym.Env],
@@ -174,6 +181,16 @@ def run_env_interaction(
     transition_observers: List[TransitionObserver],
     duration: Duration,
 ) -> None:
+    """
+    Run an agent through an environment
+
+    :param env_fn: Callable which creates a gym.Env environment
+    :param num_envs: Optional number of parallel environments to run. Default 1
+    :param choose_action_fn: Callable function by which the agent chooses actions
+    :param transition_observers: List of objects which each will be passed data from the environment
+    :param duration: Timer instance which ends the interaction when complete
+    :return: None
+    """
     vec_env: gym.vector.VectorEnv = gym.vector.SyncVectorEnv(
         [env_fn for _ in range(num_envs)]
     )
